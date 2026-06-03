@@ -1,7 +1,7 @@
 const app = require("./src/app");
 const { sequelize, Admin } = require("./src/models");
 require("dotenv").config();
-const models = require("./src/models"); // this runs initModels()
+const models = require("./src/models");
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
