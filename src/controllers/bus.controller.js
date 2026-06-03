@@ -208,7 +208,6 @@ const getBusStatistics = async (req, res, next) => {
         next(error);
     }
 };
-
 module.exports = {
     getAllBuses,
     getBusById,

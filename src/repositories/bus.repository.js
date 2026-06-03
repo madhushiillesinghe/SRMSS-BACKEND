@@ -121,7 +121,6 @@ const getStatistics = async () => {
     `);
     return result[0];
 };
-
 module.exports = {
     findAll,
     findById,

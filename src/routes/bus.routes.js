@@ -17,7 +17,6 @@ const {
 const { protect, authorize } = require("../middleware/auth.middleware");
 
 const router = express.Router();
-
 router.get("/available", protect, getAvailableBuses);
 router.get("/on-route", protect, getBusesOnRoute);
 router.get("/maintenance", protect, getBusesInMaintenance);

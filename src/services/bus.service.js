@@ -110,5 +110,4 @@ class BusService {
         };
     }
 }
-
 module.exports = BusService;
