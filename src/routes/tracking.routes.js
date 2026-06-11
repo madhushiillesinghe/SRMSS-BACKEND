@@ -8,9 +8,7 @@ const {
     getBusLocationStats
 } = require("../controllers/tracking.controller");
 const { protect, authorize } = require("../middleware/auth.middleware");
-
 const router = express.Router();
-
 // Driver/Operator endpoints (for updating location)
 router.post("/location", protect, authorize("super_admin", "depot_manager", "driver"), updateBusLocation);
 
