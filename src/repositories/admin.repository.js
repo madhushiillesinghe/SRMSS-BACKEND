@@ -1,12 +1,32 @@
-const { Admin, sequelize } = require("../models");
+// src/repositories/admin.repository.js
+const { Admin } = require("../models");
 const { Op } = require("sequelize");
 
 const findByUsername = async (username) => {
-    return await Admin.findOne({ where: { username } });
+    // ✅ IMPORTANT: Include password field
+    return await Admin.findOne({
+        where: { username },
+        attributes: ['admin_id', 'username', 'email', 'password', 'full_name', 'phone', 'role', 'status', 'last_login']
+    });
 };
 
 const findByEmail = async (email) => {
-    return await Admin.findOne({ where: { email } });
+    return await Admin.findOne({
+        where: { email },
+        attributes: ['admin_id', 'username', 'email', 'password', 'full_name', 'phone', 'role', 'status', 'last_login']
+    });
+};
+
+const findByIdentifier = async (identifier) => {
+    return await Admin.findOne({
+        where: {
+            [Op.or]: [
+                { username: identifier },
+                { email: identifier }
+            ]
+        },
+        attributes: ['admin_id', 'username', 'email', 'password', 'full_name', 'phone', 'role', 'status', 'last_login']
+    });
 };
 
 const findById = async (id) => {
@@ -16,7 +36,9 @@ const findById = async (id) => {
 };
 
 const findByIdWithPassword = async (id) => {
-    return await Admin.findByPk(id);
+    return await Admin.findByPk(id, {
+        attributes: ['admin_id', 'username', 'email', 'password', 'full_name', 'phone', 'role', 'status']
+    });
 };
 
 const findAll = async (filters = {}) => {
@@ -53,7 +75,10 @@ const updateLastLogin = async (id, lastLogin) => {
 };
 
 const updatePassword = async (id, hashedPassword) => {
-    return await Admin.update({ password: hashedPassword }, { where: { admin_id: id } });
+    const admin = await Admin.findByPk(id);
+    if (!admin) return null;
+    admin.password = hashedPassword;
+    return await admin.save();
 };
 
 const updateStatus = async (id, status) => {
@@ -79,6 +104,7 @@ const getStatistics = async () => {
 module.exports = {
     findByUsername,
     findByEmail,
+    findByIdentifier,
     findById,
     findByIdWithPassword,
     findAll,
