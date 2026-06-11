@@ -10,6 +10,8 @@ const fuelLogRoutes = require("./fuelLog.routes");
 const maintenanceRoutes = require("./maintenance.routes");
 const trackingRoutes = require("./tracking.routes");
 const dashboardRoutes = require("./dashboard.routes");
+const reportRoutes = require("./report.routes");
+
 
 const router = express.Router();
 
@@ -24,6 +26,7 @@ router.use("/fuel-logs", fuelLogRoutes);
 router.use("/maintenance", maintenanceRoutes);
 router.use("/tracking", trackingRoutes);
 router.use("/dashboard", dashboardRoutes);
+router.use("/reports", reportRoutes);
 
 // Health check
 router.get("/health", (req, res) => {
