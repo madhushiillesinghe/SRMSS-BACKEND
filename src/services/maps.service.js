@@ -1,102 +1,55 @@
-// src/services/maps.service.js
-const { Client } = require("@googlemaps/google-maps-services-js");
-
-const client = new Client({});
+const axios = require("axios");
 
 class MapsService {
-
-    static async calculateDistance(origin, destination) {
-        try {
-            const response = await client.distancematrix({
+    async getCoordinates(location) {
+        const response = await axios.get(
+            "https://api.openrouteservice.org/geocode/search",
+            {
                 params: {
-                    origins: [origin],
-                    destinations: [destination],
-                    key: process.env.GOOGLE_MAPS_API_KEY,
-                    mode: "driving",
-                    units: "metric"
+                    api_key: process.env.ORS_API_KEY,
+                    text: location,
+                    size: 1
                 }
-            });
-
-            const row = response.data.rows[0];
-            const element = row.elements[0];
-
-            if (element.status !== "OK") {
-                throw new Error("Could not calculate distance");
             }
+        );
 
-            return {
-                distanceKm: element.distance.value / 1000,
-                distanceText: element.distance.text,
-                durationMin: Math.ceil(element.duration.value / 60),
-                durationText: element.duration.text
-            };
-        } catch (error) {
-            console.error("Distance calculation error:", error.message);
-            throw error;
+        const feature = response.data.features?.[0];
+        if (!feature) {
+            throw new Error(`Location not found: ${location}`);
         }
+
+        return {
+            lng: feature.geometry.coordinates[0],
+            lat: feature.geometry.coordinates[1]
+        };
     }
 
-    static async getDirections(originLat, originLng, destLat, destLng) {
-        try {
-            const response = await client.directions({
-                params: {
-                    origin: `${originLat},${originLng}`,
-                    destination: `${destLat},${destLng}`,
-                    key: process.env.GOOGLE_MAPS_API_KEY,
-                    mode: "driving"
+    async calculateDistance(startLocation, endLocation) {
+        const start = await this.getCoordinates(startLocation);
+        const end = await this.getCoordinates(endLocation);
+
+        const response = await axios.post(
+            "https://api.openrouteservice.org/v2/directions/driving-car",
+            {
+                coordinates: [
+                    [start.lng, start.lat],
+                    [end.lng, end.lat]
+                ]
+            },
+            {
+                headers: {
+                    Authorization: process.env.ORS_API_KEY,
+                    "Content-Type": "application/json"
                 }
-            });
-
-            const route = response.data.routes[0];
-            const leg = route.legs[0];
-
-            return {
-                distanceKm: leg.distance.value / 1000,
-                distanceText: leg.distance.text,
-                durationMin: Math.ceil(leg.duration.value / 60),
-                durationText: leg.duration.text,
-                polyline: route.overview_polyline.points,
-                steps: leg.steps.map(step => ({
-                    instruction: step.html_instructions,
-                    distance: step.distance.text,
-                    duration: step.duration.text,
-                    startLocation: step.start_location,
-                    endLocation: step.end_location
-                }))
-            };
-        } catch (error) {
-            console.error("Directions error:", error.message);
-            throw error;
-        }
-    }
-
-    static async getETA(originLat, originLng, destLat, destLng) {
-        try {
-            const response = await client.distancematrix({
-                params: {
-                    origins: [`${originLat},${originLng}`],
-                    destinations: [`${destLat},${destLng}`],
-                    key: process.env.GOOGLE_MAPS_API_KEY,
-                    mode: "driving"
-                }
-            });
-
-            const element = response.data.rows[0].elements[0];
-
-            if (element.status !== "OK") {
-                return { etaMinutes: null, error: "Cannot calculate ETA" };
             }
+        );
 
-            return {
-                etaMinutes: Math.ceil(element.duration.value / 60),
-                distanceKm: element.distance.value / 1000,
-                durationText: element.duration.text
-            };
-        } catch (error) {
-            console.error("ETA error:", error.message);
-            return { etaMinutes: null, error: error.message };
-        }
+        const route = response.data.routes[0];
+        return {
+            distanceKm: Number((route.summary.distance / 1000).toFixed(2)),
+            durationMin: Math.ceil(route.summary.duration / 60)
+        };
     }
 }
 
-module.exports = MapsService;
+module.exports = new MapsService();

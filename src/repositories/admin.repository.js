@@ -3,7 +3,7 @@ const { Admin } = require("../models");
 const { Op } = require("sequelize");
 
 const findByUsername = async (username) => {
-    // ✅ IMPORTANT: Include password field
+    //  IMPORTANT: Include password field
     return await Admin.findOne({
         where: { username },
         attributes: ['admin_id', 'username', 'email', 'password', 'full_name', 'phone', 'role', 'status', 'last_login']
@@ -88,6 +88,7 @@ const updateStatus = async (id, status) => {
 const deleteAdmin = async (id) => {
     return await Admin.update({ status: "inactive" }, { where: { admin_id: id } });
 };
+
 
 const getStatistics = async () => {
     const [result] = await sequelize.query(`

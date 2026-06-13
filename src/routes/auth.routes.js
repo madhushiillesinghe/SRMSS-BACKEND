@@ -6,7 +6,9 @@ const {
     changePassword,
     logout,
     getAllAdmins,
-    createAdmin
+    createAdmin,
+    updateAdmin,
+    deleteAdmin
 } = require("../controllers/auth.controller");
 const { protect, authorize } = require("../middleware/auth.middleware");
 
@@ -24,5 +26,6 @@ router.post("/change-password", protect, changePassword);
 // Admin management (super_admin only)
 router.get("/admins", protect, authorize("super_admin"), getAllAdmins);
 router.post("/admins", protect, authorize("super_admin"), createAdmin);
-
+router.put("/admins/:id", protect, authorize("super_admin"), updateAdmin);
+router.delete("/admins/:id", protect, authorize("super_admin"), deleteAdmin);
 module.exports = router;

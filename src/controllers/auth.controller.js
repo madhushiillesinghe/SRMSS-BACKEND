@@ -138,7 +138,52 @@ const createAdmin = async (req, res, next) => {
         next(error);
     }
 };
+const updateAdmin = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const admin = await AuthService.updateAdmin(id, req.body);
 
+        res.json({
+            success: true,
+            message: "Admin updated successfully",
+            data: admin
+        });
+    } catch (error) {
+        if (error.message === "Admin not found") {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        if (error.message === "Username already exists" || error.message === "Email already in use") {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        if (error.message === "Password must be at least 6 characters") {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        next(error);
+    }
+};
+
+const deleteAdmin = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const currentAdminId = req.admin?.id || req.user?.id;
+
+        const result = await AuthService.deleteAdmin(id, currentAdminId);
+
+        res.json({
+            success: true,
+            message: "Admin deactivated successfully",
+            data: result
+        });
+    } catch (error) {
+        if (error.message === "Admin not found") {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        if (error.message === "Cannot delete your own account") {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        next(error);
+    }
+};
 module.exports = {
     login,
     refreshToken,
@@ -146,5 +191,7 @@ module.exports = {
     changePassword,
     logout,
     getAllAdmins,
-    createAdmin
+    createAdmin,
+    deleteAdmin,
+    updateAdmin
 };

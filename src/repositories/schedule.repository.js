@@ -1,4 +1,4 @@
-const { Schedule, Route, Bus, Driver, Ticket, sequelize ,RouteStop} = require("../models");
+const { Schedule, Route, Bus, Driver, Ticket, sequelize, RouteStop } = require("../models");
 const { Op } = require("sequelize");
 
 const findAll = async (filters = {}) => {
@@ -21,10 +21,8 @@ const findAll = async (filters = {}) => {
             { model: Route },
             { model: Bus },
             { model: Driver },
-            {
-                model: Ticket,
-                as: "tickets"
-            }        ],
+            { model: Ticket, as: "tickets" }
+        ],
         order: [["departure_time", "ASC"]]
     });
 };
@@ -36,15 +34,13 @@ const findById = async (id) => {
                 model: Route,
                 include: [{
                     model: RouteStop,
-                    as: "stops"  // This matches your association: as: "stops"
+                    as: "stops"
                 }]
             },
             { model: Bus },
-            { model: Driver},
-            {
-                model: Ticket,
-                as: "tickets"
-            }        ]
+            { model: Driver },
+            { model: Ticket, as: "tickets" }
+        ]
     });
 };
 
@@ -132,12 +128,8 @@ const deleteSchedule = async (id) => {
 const checkConflicts = async (routeId, busId, driverId, departureTime, arrivalTime, excludeId = null) => {
     const where = {
         [Op.or]: [
-            {
-                departure_time: { [Op.between]: [departureTime, arrivalTime] }
-            },
-            {
-                arrival_time: { [Op.between]: [departureTime, arrivalTime] }
-            },
+            { departure_time: { [Op.between]: [departureTime, arrivalTime] } },
+            { arrival_time: { [Op.between]: [departureTime, arrivalTime] } },
             {
                 [Op.and]: [
                     { departure_time: { [Op.lte]: departureTime } },
@@ -169,17 +161,16 @@ const checkConflicts = async (routeId, busId, driverId, departureTime, arrivalTi
 const getStatistics = async () => {
     try {
         const [result] = await sequelize.query(`
-            SELECT 
-                COUNT(*) as total_schedules,
-                SUM(CASE WHEN trip_status = 'completed' THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN trip_status = 'delayed' THEN 1 ELSE 0 END) as \`delayed\`,
-                SUM(CASE WHEN trip_status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
-                SUM(CASE WHEN trip_status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
-                SUM(CASE WHEN trip_status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
-                SUM(passenger_count) as total_passengers,
-                SUM(revenue) as total_revenue,
-                AVG(passenger_count) as avg_passengers_per_trip,
-                AVG(revenue) as avg_revenue_per_trip
+            SELECT COUNT(*)                                                     as total_schedules,
+                   SUM(CASE WHEN trip_status = 'completed' THEN 1 ELSE 0 END)   as completed,
+                   SUM(CASE WHEN trip_status = 'delayed' THEN 1 ELSE 0 END)     as \`delayed\`,
+                   SUM(CASE WHEN trip_status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+                   SUM(CASE WHEN trip_status = 'scheduled' THEN 1 ELSE 0 END)   as scheduled,
+                   SUM(CASE WHEN trip_status = 'cancelled' THEN 1 ELSE 0 END)   as cancelled,
+                   SUM(passenger_count)                                         as total_passengers,
+                   SUM(revenue)                                                 as total_revenue,
+                   AVG(passenger_count)                                         as avg_passengers_per_trip,
+                   AVG(revenue)                                                 as avg_revenue_per_trip
             FROM srmss_schedule
             WHERE DATE(departure_time) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         `);
@@ -200,15 +191,97 @@ const getStatistics = async () => {
         };
     }
 };
+
+const updateCurrentAndNextStop = async (scheduleId, currentStopId, nextStopId) => {
+    const schedule = await Schedule.findByPk(scheduleId);
+    if (!schedule) return null;
+    return await schedule.update({
+        current_stop_id: currentStopId,
+        next_stop_id: nextStopId
+    });
+};
+
+const getScheduleWithRouteStops = async (scheduleId) => {
+    return await Schedule.findByPk(scheduleId, {
+        include: [
+            {
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops',
+                    order: [['stop_order', 'ASC']]
+                }]
+            }
+        ]
+    });
+}; // ✅ missing closing brace fixed
+
+// Helper to get stop name
+const getStopName = async (stopId) => {
+    const stop = await RouteStop.findByPk(stopId);
+    return stop ? stop.stop_name : null;
+};
+
+// ✅ Corrected: getAllActiveBusSchedules – no syntax errors, uses Promise.all
+const getAllActiveBusSchedules = async () => {
+    const activeBuses = await Bus.findAll({
+        where: { status: "available" }
+    });
+
+    const result = [];
+
+    for (const bus of activeBuses) {
+        const now = new Date();
+        const activeSchedules = await Schedule.findAll({
+            where: {
+                bus_id: bus.id,
+                trip_status: { [Op.notIn]: ["completed", "cancelled"] },
+                departure_time: { [Op.lte]: now },
+                arrival_time: { [Op.gte]: now }
+            },
+            include: [
+                { model: Route, include: [{ model: RouteStop, as: "stops" }] },
+                { model: Driver }
+            ]
+        });
+
+        // Resolve stop names using Promise.all to avoid await inside map
+        const schedulesWithNames = await Promise.all(
+            activeSchedules.map(async (s) => ({
+                schedule_id: s.id,
+                schedule_code: s.schedule_code,
+                route_id: s.route_id,
+                current_stop_id: s.current_stop_id,
+                next_stop_id: s.next_stop_id,
+                departure_time: s.departure_time,
+                arrival_time: s.arrival_time,
+                current_stop_name: s.current_stop_id ? await getStopName(s.current_stop_id) : null,
+                next_stop_name: s.next_stop_id ? await getStopName(s.next_stop_id) : null
+            }))
+        );
+
+        result.push({
+            bus: {
+                id: bus.id,
+                bus_number: bus.bus_number,
+                license_plate: bus.license_plate
+            },
+            activeSchedules: schedulesWithNames
+        });
+    }
+
+    return result;
+};
+
 const getDailyReport = async (date) => {
     const [result] = await sequelize.query(
-        `SELECT
-             COUNT(*) as total_trips,
-             SUM(CASE WHEN trip_status = 'completed' THEN 1 ELSE 0 END) as completed_trips,
-             SUM(CASE WHEN trip_status = 'delayed' THEN 1 ELSE 0 END) as delayed_trips,
-             SUM(passenger_count) as total_passengers,
-             SUM(revenue) as total_revenue,
-             AVG(delay_minutes) as avg_delay_minutes
+        `SELECT COUNT(*)                                                   as total_trips,
+                SUM(CASE WHEN trip_status = 'completed' THEN 1 ELSE 0 END) as completed_trips,
+                SUM(CASE WHEN trip_status = 'delayed' THEN 1 ELSE 0 END)   as delayed_trips,
+                SUM(passenger_count)                                       as total_passengers,
+                SUM(revenue)                                               as total_revenue,
+                AVG(delay_minutes)                                         as avg_delay_minutes
          FROM srmss_schedule
          WHERE DATE(departure_time) = :date`,
         {
@@ -231,5 +304,9 @@ module.exports = {
     deleteSchedule,
     checkConflicts,
     getStatistics,
-    getDailyReport
+    getDailyReport,
+    updateCurrentAndNextStop,
+    getScheduleWithRouteStops,
+    getStopName,
+    getAllActiveBusSchedules
 };

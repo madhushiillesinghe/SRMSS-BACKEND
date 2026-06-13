@@ -5,7 +5,7 @@ const adminRepository = require("../repositories/admin.repository");
 
 class AuthService {
     static async login(username, password) {
-        // ✅ Get admin with password
+        //  Get admin with password
         const admin = await adminRepository.findByUsername(username);
 
         if (!admin) {
@@ -125,6 +125,45 @@ class AuthService {
 
         return await adminRepository.create(data);
     }
+
+    static async updateAdmin(id, data) {
+        const admin = await adminRepository.findById(id);
+        if (!admin) throw new Error("Admin not found");
+
+        // Check username uniqueness if changing
+        if (data.username && data.username !== admin.username) {
+            const existing = await adminRepository.findByUsername(data.username);
+            if (existing) throw new Error("Username already exists");
+        }
+
+        // Check email uniqueness if changing
+        if (data.email && data.email !== admin.email) {
+            const existing = await adminRepository.findByEmail(data.email);
+            if (existing && existing.admin_id !== id) throw new Error("Email already in use");
+        }
+
+        // Hash password if provided
+        if (data.password && data.password.trim() !== "") {
+            if (data.password.length < 6) throw new Error("Password must be at least 6 characters");
+            data.password = await bcrypt.hash(data.password, 10);
+        } else {
+            delete data.password;
+        }
+
+        return await adminRepository.update(id, data);
+    }
+
+    static async deleteAdmin(id, currentAdminId) {
+        // Prevent self-deletion
+        if (parseInt(id) === currentAdminId) {
+            throw new Error("Cannot delete your own account");
+        }
+
+        const admin = await adminRepository.findById(id);
+        if (!admin) throw new Error("Admin not found");
+
+        return await adminRepository.deleteAdmin(id);
+        }
 }
 
 module.exports = AuthService;

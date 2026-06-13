@@ -1,12 +1,21 @@
 const { RouteStop, sequelize } = require("../models");
 
-const findByRouteId = async (routeId) => {
-    return await RouteStop.findAll({
-        where: { route_id: routeId },
-        order: [["stop_order", "ASC"]]
-    });
-};
-
+// const findByRouteId = async (routeId) => {
+//     return await RouteStop.findAll({
+//         where: { route_id: routeId },
+//         order: [["stop_order", "ASC"]]
+//     });
+// };
+const  findByRouteId=async (routeId)=> {
+    const [rows] = await db.query(
+        `SELECT stop_id, stop_name, stop_order, distance_from_start, estimated_arrival_time
+             FROM route_stops
+             WHERE route_id = ?
+             ORDER BY stop_order ASC`,
+        [routeId]
+    );
+    return rows;
+}
 const findById = async (id) => {
     return await RouteStop.findByPk(id);
 };

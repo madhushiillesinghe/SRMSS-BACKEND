@@ -41,18 +41,18 @@ class ScheduleService {
             data.departure_time, data.arrival_time
         );
 
-        if (conflicts.hasConflict) {
-            const errors = [];
-            if (conflicts.routeConflicts.length) errors.push("Route has conflicting schedule");
-            if (conflicts.busConflicts.length) errors.push("Bus is already scheduled");
-            if (conflicts.driverConflicts.length) errors.push("Driver is already scheduled");
-            throw new Error(errors.join(", "));
-        }
+        // if (conflicts.hasConflict) {
+        //     const errors = [];
+        //     if (conflicts.routeConflicts.length) errors.push("Route has conflicting schedule");
+        //     if (conflicts.busConflicts.length) errors.push("Bus is already scheduled");
+        //     if (conflicts.driverConflicts.length) errors.push("Driver is already scheduled");
+        //     throw new Error(errors.join(", "));
+        // }
 
         return await scheduleRepository.create(data);
     }
 
-    // ✅ Create Daily Schedule with Multiple Trips (Morning, Afternoon, Evening)
+    // Create Daily Schedule with Multiple Trips (Morning, Afternoon, Evening)
     static async createMultiTripSchedule(data) {
         const { routeId, busId, driverId, tripTimes, tripType } = data;
         // tripTimes: [{ time: "09:30", type: "regular" }, { time: "13:30", type: "express" }, { time: "16:30", type: "regular" }]
@@ -108,7 +108,7 @@ class ScheduleService {
         };
     }
 
-    // ✅ Create Daily Schedule with Morning & Evening (2 trips)
+    // Create Daily Schedule with Morning & Evening (2 trips)
     static async createDailySchedule(data) {
         const { routeId, busId, driverId, morningTime, eveningTime, tripType } = data;
 

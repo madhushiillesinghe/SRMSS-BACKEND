@@ -103,35 +103,111 @@ const getActiveBusesLocations = async () => {
     `);
 
     return result;
-};const getBusRouteProgress = async (busId, scheduleId) => {
+};
+// src/repositories/busLocation.repository.js
+const getBusRouteProgress = async (busId, scheduleId) => {
     const [result] = await sequelize.query(`
         SELECT
             l.*,
             r.total_distance,
             r.estimated_duration,
-            rs.stop_name as next_stop_name,
-            rs.distance_from_start as next_stop_distance,
-            (rs.distance_from_start - l.distance_traveled) as remaining_distance,
+            -- Current stop (the last stop where distance_from_start <= distance_traveled)
+            cs.stop_id AS current_stop_id,
+            cs.stop_name AS current_stop_name,
+            cs.stop_order AS current_stop_order,
+            cs.distance_from_start AS current_stop_distance,
+            -- Next stop (the first stop where distance_from_start > distance_traveled)
+            ns.stop_id AS next_stop_id,
+            ns.stop_name AS next_stop_name,
+            ns.stop_order AS next_stop_order,
+            ns.distance_from_start AS next_stop_distance,
+            (ns.distance_from_start - l.distance_traveled) AS remaining_distance,
             CASE
-                WHEN l.speed > 0 THEN (rs.distance_from_start - l.distance_traveled) / l.speed * 60
-                ELSE rs.estimated_arrival_time - l.elapsed_time
-                END as estimated_minutes_to_next_stop
+                WHEN l.speed > 0 THEN (ns.distance_from_start - l.distance_traveled) / l.speed * 60
+                ELSE ns.estimated_arrival_time - l.elapsed_time
+                END AS estimated_minutes_to_next_stop
         FROM srmss_bus_location l
                  JOIN srmss_schedule s ON l.schedule_id = s.schedule_id
                  JOIN srmss_route r ON s.route_id = r.route_id
-                 LEFT JOIN srmss_route_stop rs
-                           ON rs.route_id = r.route_id
-                               AND rs.distance_from_start > l.distance_traveled
+            -- Find current stop: the stop with greatest distance <= distance_traveled
+                 LEFT JOIN srmss_route_stop cs
+                           ON cs.route_id = r.route_id
+                               AND cs.distance_from_start <= l.distance_traveled
+            -- Find next stop: the stop with smallest distance > distance_traveled
+                 LEFT JOIN srmss_route_stop ns
+                           ON ns.route_id = r.route_id
+                               AND ns.distance_from_start > l.distance_traveled
         WHERE l.bus_id = :busId
           AND l.schedule_id = :scheduleId
-        ORDER BY rs.distance_from_start ASC
+        ORDER BY ns.distance_from_start ASC, cs.distance_from_start DESC
             LIMIT 1
     `, {
         replacements: { busId, scheduleId },
         type: sequelize.QueryTypes.SELECT
     });
 
-    return result;
+    // If no location found, return null
+    if (!result) return null;
+
+    // Optionally, find the actual current stop (the one with max distance <= distance_traveled)
+    // because the LEFT JOIN may return multiple rows if not grouped; we use ORDER BY and LIMIT 1.
+    // The above query orders by ns.distance_from_start ASC (so next stop first) and also cs.distance_from_start DESC.
+    // Using LIMIT 1 will give us one row with the current and next stop as described.
+    // However, due to two LEFT JOINs, we might get a cartesian product if there are multiple matches.
+    // Better to use subqueries or a different approach.
+
+    // Alternative: Use subqueries for clarity and correctness.
+    const [resultAlt] = await sequelize.query(`
+        SELECT
+            l.*,
+            r.total_distance,
+            r.estimated_duration,
+            (SELECT stop_id FROM srmss_route_stop 
+             WHERE route_id = r.route_id AND distance_from_start <= l.distance_traveled
+             ORDER BY distance_from_start DESC LIMIT 1) AS current_stop_id,
+            (SELECT stop_name FROM srmss_route_stop 
+             WHERE route_id = r.route_id AND distance_from_start <= l.distance_traveled
+             ORDER BY distance_from_start DESC LIMIT 1) AS current_stop_name,
+            (SELECT stop_order FROM srmss_route_stop 
+             WHERE route_id = r.route_id AND distance_from_start <= l.distance_traveled
+             ORDER BY distance_from_start DESC LIMIT 1) AS current_stop_order,
+            (SELECT distance_from_start FROM srmss_route_stop 
+             WHERE route_id = r.route_id AND distance_from_start <= l.distance_traveled
+             ORDER BY distance_from_start DESC LIMIT 1) AS current_stop_distance,
+            (SELECT stop_id FROM srmss_route_stop 
+             WHERE route_id = r.route_id AND distance_from_start > l.distance_traveled
+             ORDER BY distance_from_start ASC LIMIT 1) AS next_stop_id,
+            (SELECT stop_name FROM srmss_route_stop 
+             WHERE route_id = r.route_id AND distance_from_start > l.distance_traveled
+             ORDER BY distance_from_start ASC LIMIT 1) AS next_stop_name,
+            (SELECT stop_order FROM srmss_route_stop 
+             WHERE route_id = r.route_id AND distance_from_start > l.distance_traveled
+             ORDER BY distance_from_start ASC LIMIT 1) AS next_stop_order,
+            (SELECT distance_from_start FROM srmss_route_stop 
+             WHERE route_id = r.route_id AND distance_from_start > l.distance_traveled
+             ORDER BY distance_from_start ASC LIMIT 1) AS next_stop_distance,
+            ( (SELECT distance_from_start FROM srmss_route_stop 
+               WHERE route_id = r.route_id AND distance_from_start > l.distance_traveled
+               ORDER BY distance_from_start ASC LIMIT 1) - l.distance_traveled ) AS remaining_distance,
+            CASE
+                WHEN l.speed > 0 THEN ( (SELECT distance_from_start FROM srmss_route_stop 
+                                        WHERE route_id = r.route_id AND distance_from_start > l.distance_traveled
+                                        ORDER BY distance_from_start ASC LIMIT 1) - l.distance_traveled ) / l.speed * 60
+                ELSE (SELECT estimated_arrival_time FROM srmss_route_stop 
+                      WHERE route_id = r.route_id AND distance_from_start > l.distance_traveled
+                      ORDER BY distance_from_start ASC LIMIT 1) - l.elapsed_time
+            END AS estimated_minutes_to_next_stop
+        FROM srmss_bus_location l
+        JOIN srmss_schedule s ON l.schedule_id = s.schedule_id
+        JOIN srmss_route r ON s.route_id = r.route_id
+        WHERE l.bus_id = :busId AND l.schedule_id = :scheduleId
+        LIMIT 1
+    `, {
+        replacements: { busId, scheduleId },
+        type: sequelize.QueryTypes.SELECT
+    });
+
+    return resultAlt;
 };
 module.exports = {
     findAll,

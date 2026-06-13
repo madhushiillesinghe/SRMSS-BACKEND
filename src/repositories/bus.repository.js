@@ -101,7 +101,16 @@ const assignRoute = async (id, routeId) => {
     if (!bus) return null;
     return await bus.update({ assigned_route_id: routeId });
 };
+const findById2 =async(busId) =>{
+    const [rows] = await db.query('SELECT * FROM bus WHERE id = ?', [busId]);
+    return rows[0] || null;
+}
 
+// NEW: get all active buses
+const findAllActive=async () =>{
+    const [rows] = await db.query('SELECT * FROM bus WHERE status = ?', ['available']);
+    return rows; // array of bus objects
+}
 const getStatistics = async () => {
     const [result] = await sequelize.query(`
         SELECT 
@@ -134,5 +143,7 @@ module.exports = {
     getMaintenanceDueBuses,
     updateBusOdometer,
     assignRoute,
-    getStatistics
+    getStatistics,
+    findAllActive,
+    findById2
 };

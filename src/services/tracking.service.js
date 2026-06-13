@@ -4,7 +4,7 @@ const busRepository = require("../repositories/bus.repository");
 const scheduleRepository = require("../repositories/schedule.repository");
 const routeStopRepository = require("../repositories/routeStop.repository");
 const mapsService = require("./maps.service");
-
+const busProgressRepository = require('../repositories/busProgress.repository');
 class TrackingService {
 
     static async updateBusLocation(data) {
@@ -219,44 +219,85 @@ class TrackingService {
         return busesWithLocation;
     }
 
-    static async getBusRouteProgress(busId, scheduleId) {
-        const progress = await busLocationRepository.getBusRouteProgress(busId, scheduleId);
-        if (!progress) throw new Error("No route progress data found");
 
-        const schedule = await scheduleRepository.findById(scheduleId);
-        const stops = await routeStopRepository.findByRouteId(schedule.route_id);
+//     static async getBusRouteProgress(busId, scheduleId) {
+//         // 1. Verify bus is active
+//         const bus = await busRepository.findById(busId);
+//         if (!bus || bus.status !== 'available') {
+//             throw new Error('Bus is not active');
+//         }
+//
+//         // 2. Get schedule (use provided scheduleId or find current active schedule)
+//         let schedule;
+//         if (scheduleId) {
+//             schedule = await scheduleRepository.findById(scheduleId);
+//         } else {
+//             schedule = await scheduleRepository.findActiveScheduleByBus(busId);
+//         }
+//         if (!schedule) {
+//             throw new Error('No active schedule found for this bus');
+//         }
+//
+//         // 3. Get current and next stop IDs from progress table (not bus_location)
+//         console.log(busId)
+//         const progress = await busProgressRepository.getCurrentAndNextStop(busId, schedule.id);
+//         if (!progress || !progress.current_stop_id) {
+//             throw new Error('Route progress data not available for this bus');
+//         }
+//
+//         // 4. Get all stops for the route
+//         const stops = await routeStopRepository.findByRouteId(schedule.route_id);
+//         if (!stops.length) {
+//             throw new Error('No stops defined for this route');
+//         }
+//
+//         // 5. Find current and next stop objects
+//         const currentStop = stops.find(s => s.stop_id === progress.current_stop_id);
+//         const nextStop = stops.find(s => s.stop_id === progress.next_stop_id);
+//
+//         if (!currentStop) {
+//             throw new Error(`Current stop ID ${progress.current_stop_id} not found in route`);
+//         }
+//
+//         // 6. Calculate progress percentage based on stop order
+//         const totalStops = stops.length;
+//         const progressPercentage = ((currentStop.stop_order - 1) / (totalStops - 1)) * 100;
+//
+//         // 7. Build response (matches original structure but with nulls for location)
+//         return {
+//             route: {
+//                 route_id: schedule.route_id,
+//                 total_distance: schedule.total_distance,
+//                 estimated_duration: schedule.estimated_duration,
+//             },
+//             current_position: {
+//                 latitude: null,
+//                 longitude: null,
+//                 distance_traveled: null,
+//                 elapsed_time: null,
+//                 speed: null,
+//                 progress_percentage: progressPercentage,
+//             },
+//             next_stop: nextStop
+//                 ? {
+//                     stop_name: nextStop.stop_name,
+//                     distance_to_next: nextStop.distance_from_start - currentStop.distance_from_start,
+//                     estimated_minutes: nextStop.estimated_arrival_time - currentStop.estimated_arrival_time,
+//                 }
+//                 : null,
+//             all_stops: stops.map(stop => ({
+//                 stop_id: stop.stop_id,
+//                 stop_name: stop.stop_name,
+//                 stop_order: stop.stop_order,
+//                 distance_from_start: stop.distance_from_start,
+//                 estimated_arrival_time: stop.estimated_arrival_time,
+//                 is_passed: stop.stop_order <= currentStop.stop_order,
+//             })),
+//         };
+//
+// }
 
-        return {
-            route: {
-                route_id: schedule.route_id,
-                total_distance: progress.total_distance,
-                estimated_duration: progress.estimated_duration
-            },
-            current_position: {
-                latitude: progress.latitude,
-                longitude: progress.longitude,
-                distance_traveled: progress.distance_traveled,
-                elapsed_time: progress.elapsed_time,
-                speed: progress.speed,
-                progress_percentage: (progress.distance_traveled / progress.total_distance) * 100
-            },
-            next_stop: progress.next_stop_name ? {
-                stop_name: progress.next_stop_name,
-                distance_to_next: progress.remaining_distance,
-                estimated_minutes: progress.estimated_minutes_to_next_stop
-            } : null,
-            all_stops: stops.map(stop => ({
-                stop_id: stop.stop_id,
-                stop_name: stop.stop_name,
-                stop_order: stop.stop_order,
-                distance_from_start: stop.distance_from_start,
-                estimated_arrival_time: stop.estimated_arrival_time,
-                is_passed: stop.distance_from_start <= progress.distance_traveled
-            }))
-        };
-    }
-
-    static async getBusHistory(busId, hours = 24) {
+   static async getBusHistory(busId, hours = 24) {
         const cutoffTime = new Date();
         cutoffTime.setHours(cutoffTime.getHours() - hours);
 
@@ -323,6 +364,67 @@ class TrackingService {
         const stops = await routeStopRepository.findByRouteId(routeId);
         return stops.find(stop => stop.distance_from_start > distanceTraveled);
     }
+
+    // src/services/tracking.service.js
+// Add inside the TrackingService class
+
+    /**
+     * Driver arrives at a stop – updates schedule current/next stop
+     * @param {number} scheduleId
+     * @param {number} arrivedStopId
+     * @returns {Promise<Object>}
+     */
+    static async driverArrivedAtStop(scheduleId, arrivedStopId) {
+        // 1. Get schedule with route and stops
+        const schedule = await scheduleRepository.getScheduleWithRouteStops(scheduleId);
+        if (!schedule) throw new Error('Schedule not found');
+
+        const route = schedule.Route;
+        if (!route || !route.stops || route.stops.length === 0) {
+            throw new Error('Route has no stops defined');
+        }
+
+        const stops = route.stops; // already sorted by stop_order
+
+        // 2. Find the index of the arrived stop
+        const currentIndex = stops.findIndex(s => s.stop_id === arrivedStopId);
+        if (currentIndex === -1) {
+            throw new Error('Stop does not belong to this route');
+        }
+
+        // 3. Determine next stop (if any)
+        const nextStop = stops[currentIndex + 1] || null;
+        const nextStopId = nextStop ? nextStop.stop_id : null;
+
+        // 4. Update schedule
+        const updatedSchedule = await scheduleRepository.updateCurrentAndNextStop(
+            scheduleId,
+            arrivedStopId,
+            nextStopId
+        );
+
+        // 5. Optionally update bus location's next_stop_id and distance_traveled
+        if (schedule.bus_id) {
+            const latestLocation = await busLocationRepository.findLatestByBusId(schedule.bus_id);
+            if (latestLocation && latestLocation.schedule_id === scheduleId) {
+                await busLocationRepository.update(latestLocation.location_id, {
+                    next_stop_id: nextStopId,
+                    distance_traveled: nextStop ? nextStop.distance_from_start : latestLocation.distance_traveled,
+                    estimated_arrival_to_next: null // will be recalculated on next GPS update
+                });
+            }
+        }
+
+        return {
+            schedule_id: scheduleId,
+            current_stop_id: arrivedStopId,
+            next_stop_id: nextStopId,
+            current_stop_name: stops[currentIndex].stop_name,
+            next_stop_name: nextStop ? nextStop.stop_name : null,
+            is_final_stop: nextStop === null
+        };
+    }
 }
+
 
 module.exports = TrackingService;

@@ -166,6 +166,76 @@ const getBusLocationStats = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+    // src/controllers/tracking.controller.js
+
+    const driverArrivedAtStop = async (req, res, next) => {
+        try {
+            const { schedule_id, stop_id } = req.body;
+
+            if (!schedule_id || !stop_id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'schedule_id and stop_id are required'
+                });
+            }
+
+            // You may also check that the driver is assigned to this schedule,
+            // or that the bus belongs to the driver. Add authorization as needed.
+
+            const result = await TrackingService.driverArrivedAtStop(schedule_id, stop_id);
+
+            res.json({
+                success: true,
+                message: 'Arrival recorded',
+                data: result
+            });
+        } catch (error) {
+            console.error('Error in driverArrivedAtStop:', error.message);
+            if (error.message.includes('not found') || error.message.includes('does not belong')) {
+                return res.status(404).json({ success: false, message: error.message });
+            }
+            next(error);
+        }
+    };
+
+// Don't forget to export the new function in module.exports
+};
+const driverArrivedAtStop = async (req, res, next) => {
+    try {
+        const { bus_id, schedule_id, stop_id } = req.body;
+        if (!bus_id || !schedule_id || !stop_id) {
+            return res.status(400).json({ success: false, message: 'bus_id, schedule_id, stop_id are required' });
+        }
+
+        // Get schedule with route stops
+        const schedule = await scheduleRepository.getScheduleWithStops(schedule_id);
+        if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
+
+        const stops = schedule.Route.stops.sort((a,b) => a.stop_order - b.stop_order);
+        const currentStopIndex = stops.findIndex(s => s.stop_id === stop_id);
+        if (currentStopIndex === -1) return res.status(400).json({ success: false, message: 'Stop not found in route' });
+
+        const nextStop = stops[currentStopIndex + 1] || null;
+        const nextStopId = nextStop ? nextStop.stop_id : null;
+
+        // Update schedule current/next stop
+        await scheduleRepository.updateCurrentAndNextStop(schedule_id, stop_id, nextStopId);
+
+        // Also update latest BusLocation record for this bus/schedule
+        const latestLocation = await busLocationRepository.findLatestByBusId(bus_id);
+        if (latestLocation && latestLocation.schedule_id === schedule_id) {
+            await busLocationRepository.update(latestLocation.location_id, {
+                next_stop_id: nextStopId,
+                distance_traveled: (nextStop ? nextStop.distance_from_start : latestLocation.distance_traveled),
+                estimated_arrival_to_next: null // will be recalculated by next GPS update
+            });
+        }
+
+        res.json({ success: true, message: 'Arrival recorded', data: { current_stop_id: stop_id, next_stop_id: nextStopId } });
+    } catch (error) {
+        console.error(error);
+        next(error);
+    }
 };
 
 module.exports = {
@@ -174,5 +244,6 @@ module.exports = {
     getAllActiveBusesLocations,
     getBusRouteProgress,
     getBusHistory,
-    getBusLocationStats
+    getBusLocationStats,
+    driverArrivedAtStop
 };
