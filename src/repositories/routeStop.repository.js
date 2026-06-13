@@ -6,17 +6,24 @@ const { RouteStop, sequelize } = require("../models");
 //         order: [["stop_order", "ASC"]]
 //     });
 // };
-const  findByRouteId=async (routeId)=> {
-    const [rows] = await db.query(
-        `SELECT stop_id, stop_name, stop_order, distance_from_start, estimated_arrival_time
-             FROM route_stops
+const findByRouteId = async (routeId) => {
+    try {
+        const [rows] = await sequelize.query(
+            `SELECT stop_id, stop_name, stop_order, distance_from_start, estimated_arrival_time
+             FROM srmss_route_stop
              WHERE route_id = ?
              ORDER BY stop_order ASC`,
-        [routeId]
-    );
-    return rows;
-}
-const findById = async (id) => {
+            {
+                replacements: [routeId],
+                type: sequelize.QueryTypes.SELECT
+            }
+        );
+        return rows || [];   //  always return an array
+    } catch (error) {
+        console.error("Error in findByRouteId:", error);
+        return [];           //  return empty array on error
+    }
+};const findById = async (id) => {
     return await RouteStop.findByPk(id);
 };
 

@@ -90,7 +90,7 @@ class TrackingService {
         const location = await busLocationRepository.create(locationData);
 
         if (bus.status !== "on_route" && data.speed > 0) {
-            await busRepository.update(data.bus_id, { status: "on_route" });
+            await busRepository.update(data.bus_id, {status: "on_route"});
         }
 
         return location;
@@ -114,48 +114,44 @@ class TrackingService {
         console.log(`✅ Bus ${busId} arrival recorded at stop ${stopId}`);
     }
 
-    static async getBusCurrentLocation(busId) {
-        const location = await busLocationRepository.findLatestByBusId(busId);
-        if (!location) throw new Error("No location data found for this bus");
-
-        const bus = await busRepository.findById(busId);
-        let eta = null;
-
-        if (location.next_stop_id) {
-            const nextStop = await routeStopRepository.findById(location.next_stop_id);
-            if (nextStop && location.latitude && location.longitude) {
-                const etaResult = await mapsService.getETA(
-                    location.latitude, location.longitude,
-                    nextStop.latitude, nextStop.longitude
-                );
-                eta = etaResult;
-            } else if (location.estimated_arrival_to_next) {
-                eta = { etaMinutes: location.estimated_arrival_to_next };
-            }
-        }
-
-        return {
-            bus: {
-                id: bus.bus_id,
-                registration_number: bus.registration_number,
-                bus_model: bus.bus_model,
-                status: bus.status
-            },
-            location: {
-                latitude: location.latitude,
-                longitude: location.longitude,
-                speed: location.speed,
-                heading: location.heading,
-                status: location.status,
-                recorded_at: location.recorded_at,
-                is_recent: location.isRecent()
-            },
-            next_stop_eta: eta,
-            last_update_seconds_ago: Math.floor((new Date() - new Date(location.recorded_at)) / 1000)
-        };
+// src/services/tracking.service.js
+    static async getBusRouteProgress(busId, scheduleId) {
+        return await busLocationRepository.getBusRouteProgress(busId, scheduleId);
     }
 
-    static async getBusETA(busId, stopId) {
+    static async getAllActiveBusesLocations() {
+        const activeBuses = await busRepository.findAllActive(); // returns buses with status 'available' or 'on_route'
+        const result = await Promise.all(
+            activeBuses.map(async (bus) => {
+                const activeSchedule = await scheduleRepository.findActiveScheduleByBus(bus.bus_id);
+                let locationData = null;
+                let eta = null;
+                if (activeSchedule) {
+                    const progress = await busLocationRepository.getRouteProgressFromSchedule(bus.bus_id, activeSchedule.schedule_id);
+                    if (progress && progress.current_stop && progress.current_stop.latitude && progress.current_stop.longitude) {
+                        locationData = {
+                            latitude: progress.current_stop.latitude,
+                            longitude: progress.current_stop.longitude,
+                            speed: 0,
+                            heading: 0
+                        };
+                        if (progress.next_stop && progress.next_stop.estimated_minutes) {
+                            eta = progress.next_stop.estimated_minutes;
+                        }
+                    }
+                }
+                return {
+                    bus_id: bus.bus_id,
+                    registration_number: bus.registration_number,
+                    bus_model: bus.bus_model,
+                    location: locationData, // may be null if no schedule or no coordinates
+                    eta_to_next_stop_minutes: eta,
+                    last_update: activeSchedule ? activeSchedule.departure_time : new Date().toISOString()
+                };
+            })
+        );
+        return result;
+    }    static async getBusETA(busId, stopId) {
         const location = await busLocationRepository.findLatestByBusId(busId);
         if (!location) throw new Error("No location data found");
 
@@ -181,45 +177,46 @@ class TrackingService {
         };
     }
 
+// src/services/tracking.service.js
+
+// src/services/tracking.service.js
+    static async getBusRouteProgress(busId, scheduleId) {
+        return await busLocationRepository.getBusRouteProgress(busId, scheduleId);
+    }
+
     static async getAllActiveBusesLocations() {
-        const locations = await busLocationRepository.getActiveBusesLocations();
-
-        const busesWithLocation = await Promise.all(
-            locations.map(async (loc) => {
-                const bus = await busRepository.findById(loc.bus_id);
+        const activeBuses = await busRepository.findAllActive(); // returns buses with status 'available' or 'on_route'
+        const result = await Promise.all(
+            activeBuses.map(async (bus) => {
+                const activeSchedule = await scheduleRepository.findActiveScheduleByBus(bus.bus_id);
+                let locationData = null;
                 let eta = null;
-
-                if (loc.next_stop_id) {
-                    const nextStop = await routeStopRepository.findById(loc.next_stop_id);
-                    if (nextStop && loc.latitude && loc.longitude) {
-                        const etaResult = await mapsService.getETA(
-                            loc.latitude, loc.longitude,
-                            nextStop.latitude, nextStop.longitude
-                        );
-                        eta = etaResult.etaMinutes;
+                if (activeSchedule) {
+                    const progress = await busLocationRepository.getRouteProgressFromSchedule(bus.bus_id, activeSchedule.schedule_id);
+                    if (progress && progress.current_stop && progress.current_stop.latitude && progress.current_stop.longitude) {
+                        locationData = {
+                            latitude: progress.current_stop.latitude,
+                            longitude: progress.current_stop.longitude,
+                            speed: 0,
+                            heading: 0
+                        };
+                        if (progress.next_stop && progress.next_stop.estimated_minutes) {
+                            eta = progress.next_stop.estimated_minutes;
+                        }
                     }
                 }
-
                 return {
                     bus_id: bus.bus_id,
                     registration_number: bus.registration_number,
                     bus_model: bus.bus_model,
-                    location: {
-                        latitude: loc.latitude,
-                        longitude: loc.longitude,
-                        speed: loc.speed,
-                        heading: loc.heading
-                    },
+                    location: locationData, // may be null if no schedule or no coordinates
                     eta_to_next_stop_minutes: eta,
-                    last_update: loc.recorded_at
+                    last_update: activeSchedule ? activeSchedule.departure_time : new Date().toISOString()
                 };
             })
         );
-
-        return busesWithLocation;
+        return result;
     }
-
-
 //     static async getBusRouteProgress(busId, scheduleId) {
 //         // 1. Verify bus is active
 //         const bus = await busRepository.findById(busId);
@@ -297,7 +294,7 @@ class TrackingService {
 //
 // }
 
-   static async getBusHistory(busId, hours = 24) {
+    static async getBusHistory(busId, hours = 24) {
         const cutoffTime = new Date();
         cutoffTime.setHours(cutoffTime.getHours() - hours);
 
@@ -311,7 +308,7 @@ class TrackingService {
 
         for (let i = 1; i < locations.length; i++) {
             const dist = this.calculateDistance(
-                locations[i-1].latitude, locations[i-1].longitude,
+                locations[i - 1].latitude, locations[i - 1].longitude,
                 locations[i].latitude, locations[i].longitude
             );
             totalDistance += dist;
@@ -319,7 +316,7 @@ class TrackingService {
         }
 
         const totalTime = locations.length > 1
-            ? (new Date(locations[locations.length-1].recorded_at) - new Date(locations[0].recorded_at)) / 3600000
+            ? (new Date(locations[locations.length - 1].recorded_at) - new Date(locations[0].recorded_at)) / 3600000
             : 0;
         const avgSpeed = totalTime > 0 ? totalDistance / totalTime : 0;
 
@@ -346,10 +343,10 @@ class TrackingService {
         const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     }
 
@@ -424,7 +421,120 @@ class TrackingService {
             is_final_stop: nextStop === null
         };
     }
+
+    static async getActiveBusesWithScheduleProgress() {
+        // 1. Get all active buses
+        const activeBuses = await busRepository.findAllActive();
+        if (!activeBuses.length) return [];
+
+        const result = [];
+
+        for (const bus of activeBuses) {
+            // 2. Find current active schedule for this bus
+            const schedule = await scheduleRepository.findActiveScheduleByBus(bus.bus_id);
+
+            if (!schedule) {
+                // Bus is active but no ongoing schedule
+                result.push({
+                    bus: {
+                        bus_id: bus.bus_id,
+                        registration_number: bus.registration_number,
+                        bus_model: bus.bus_model,
+                        status: bus.status
+                    },
+                    schedule: null,
+                    message: 'No active schedule found'
+                });
+                continue;
+            }
+
+            // 3. Retrieve current and next stop IDs from schedule
+            const currentStopId = schedule.current_stop_id;
+            const nextStopId = schedule.next_stop_id;
+
+            let currentStop = null;
+            let nextStop = null;
+
+            // 4. Get stop names from route stops
+            if (schedule.Route && schedule.Route.stops) {
+                const stops = schedule.Route.stops;
+                if (currentStopId) {
+                    currentStop = stops.find(s => s.stop_id === currentStopId);
+                }
+                if (nextStopId) {
+                    nextStop = stops.find(s => s.stop_id === nextStopId);
+                }
+            }
+
+            // 5. Build response
+            result.push({
+                bus: {
+                    bus_id: bus.bus_id,
+                    registration_number: bus.registration_number,
+                    bus_model: bus.bus_model,
+                    status: bus.status
+                },
+                schedule: {
+                    schedule_id: schedule.schedule_id,
+                    route_id: schedule.route_id,
+                    route_name: schedule.Route?.route_name,
+                    departure_time: schedule.departure_time,
+                    arrival_time: schedule.arrival_time,
+                    current_stop_id: currentStopId,
+                    current_stop_name: currentStop ? currentStop.stop_name : null,
+                    next_stop_id: nextStopId,
+                    next_stop_name: nextStop ? nextStop.stop_name : null,
+                    is_completed: nextStopId === null && currentStopId !== null
+                }
+            });
+        }
+
+        return result;
+    }
+
+    static async getBusCurrentLocation(busId) {
+        const bus = await busRepository.findById(busId);
+        if (!bus) throw new Error("Bus not found");
+
+        // Find active schedule for this bus (current or upcoming)
+        const activeSchedule = await scheduleRepository.findActiveScheduleByBus(busId);
+        if (!activeSchedule) {
+            throw new Error("No active schedule found for this bus");
+        }
+
+        // Get route progress from schedule (without GPS)
+        const progress = await busLocationRepository.getRouteProgressFromSchedule(busId, activeSchedule.schedule_id);
+        if (!progress) {
+            throw new Error("Could not determine route progress from schedule");
+        }
+
+        // Use current stop coordinates as bus location (if available)
+        let locationData = null;
+        if (progress.current_stop && progress.current_stop.latitude && progress.current_stop.longitude) {
+            locationData = {
+                latitude: progress.current_stop.latitude,
+                longitude: progress.current_stop.longitude,
+                speed: 0,
+                heading: 0,
+                status: 'stopped',
+                recorded_at: activeSchedule.departure_time,
+                is_recent: true
+            };
+        }
+
+        return {
+            bus: {
+                id: bus.bus_id,
+                registration_number: bus.registration_number,
+                bus_model: bus.bus_model,
+                status: bus.status
+            },
+            location: locationData,
+            next_stop_eta: progress.next_stop ? { etaMinutes: progress.next_stop.estimated_minutes } : null,
+            last_update_seconds_ago: 0,
+            // Also return schedule progress details for convenience
+            route_progress: progress
+        };
+    }
 }
-
-
 module.exports = TrackingService;

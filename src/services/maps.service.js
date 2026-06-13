@@ -50,6 +50,7 @@ class MapsService {
             durationMin: Math.ceil(route.summary.duration / 60)
         };
     }
+
 }
 
 module.exports = new MapsService();

@@ -41,27 +41,19 @@ const updateBusLocation = async (req, res, next) => {
 const getBusCurrentLocation = async (req, res, next) => {
     try {
         const { busId } = req.params;
-
-        const bus = await busRepository.findById(busId);
-        if (!bus) {
-            return res.status(404).json({ success: false, message: "Bus not found" });
-        }
-
-        const location = await TrackingService.getBusCurrentLocation(busId);
-
+        const data = await TrackingService.getBusCurrentLocation(busId);
         res.json({
             success: true,
             message: "Bus current location retrieved successfully",
-            data: location
+            data
         });
     } catch (error) {
-        if (error.message === "No location data found for this bus") {
+        if (error.message === "Bus not found" || error.message === "No active schedule found for this bus") {
             return res.status(404).json({ success: false, message: error.message });
         }
         next(error);
     }
 };
-
 const getAllActiveBusesLocations = async (req, res, next) => {
     try {
         const locations = await TrackingService.getAllActiveBusesLocations();
@@ -87,7 +79,6 @@ const getBusRouteProgress = async (req, res, next) => {
         }
 
         const progress = await TrackingService.getBusRouteProgress(busId, scheduleId);
-
         res.json({
             success: true,
             message: "Bus route progress retrieved successfully",
@@ -100,7 +91,18 @@ const getBusRouteProgress = async (req, res, next) => {
         next(error);
     }
 };
-
+const getActiveBusesProgress = async (req, res, next) => {
+    try {
+        const progress = await TrackingService.getActiveBusesWithScheduleProgress();
+        res.json({
+            success: true,
+            message: 'Active buses schedule progress retrieved',
+            data: progress
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 const getBusHistory = async (req, res, next) => {
     try {
         const { busId } = req.params;
@@ -240,10 +242,11 @@ const driverArrivedAtStop = async (req, res, next) => {
 
 module.exports = {
     updateBusLocation,
-    getBusCurrentLocation,
     getAllActiveBusesLocations,
     getBusRouteProgress,
     getBusHistory,
     getBusLocationStats,
-    driverArrivedAtStop
+    driverArrivedAtStop,
+    getActiveBusesProgress,
+    getBusCurrentLocation
 };

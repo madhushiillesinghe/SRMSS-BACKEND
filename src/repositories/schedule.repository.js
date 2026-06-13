@@ -223,57 +223,75 @@ const getStopName = async (stopId) => {
     return stop ? stop.stop_name : null;
 };
 
-// ✅ Corrected: getAllActiveBusSchedules – no syntax errors, uses Promise.all
-const getAllActiveBusSchedules = async () => {
-    const activeBuses = await Bus.findAll({
-        where: { status: "available" }
+//  Corrected: getAllActiveBusSchedules – no syntax errors, uses Promise.all
+// src/repositories/schedule.repository.js
+const findActiveScheduleByBus = async (busId) => {
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // 1. Try to find an ongoing schedule (in_progress AND time window matches)
+    let schedule = await Schedule.findOne({
+        where: {
+            bus_id: busId,
+            departure_time: { [Op.lte]: now },
+            arrival_time: { [Op.gte]: now },
+            trip_status: 'in_progress'
+        },
+        include: [{
+            model: Route,
+            as: 'Route',
+            include: [{
+                model: RouteStop,
+                as: 'stops'
+            }]
+        }],
+        order: [['departure_time', 'ASC']]
     });
 
-    const result = [];
-
-    for (const bus of activeBuses) {
-        const now = new Date();
-        const activeSchedules = await Schedule.findAll({
+    // 2. If no ongoing schedule, get the next scheduled trip for today (or future)
+    if (!schedule) {
+        schedule = await Schedule.findOne({
             where: {
-                bus_id: bus.id,
-                trip_status: { [Op.notIn]: ["completed", "cancelled"] },
-                departure_time: { [Op.lte]: now },
-                arrival_time: { [Op.gte]: now }
+                bus_id: busId,
+                departure_time: { [Op.gte]: now },   // future or exactly now
+                trip_status: { [Op.in]: ['scheduled', 'in_progress'] }
             },
-            include: [
-                { model: Route, include: [{ model: RouteStop, as: "stops" }] },
-                { model: Driver }
-            ]
-        });
-
-        // Resolve stop names using Promise.all to avoid await inside map
-        const schedulesWithNames = await Promise.all(
-            activeSchedules.map(async (s) => ({
-                schedule_id: s.id,
-                schedule_code: s.schedule_code,
-                route_id: s.route_id,
-                current_stop_id: s.current_stop_id,
-                next_stop_id: s.next_stop_id,
-                departure_time: s.departure_time,
-                arrival_time: s.arrival_time,
-                current_stop_name: s.current_stop_id ? await getStopName(s.current_stop_id) : null,
-                next_stop_name: s.next_stop_id ? await getStopName(s.next_stop_id) : null
-            }))
-        );
-
-        result.push({
-            bus: {
-                id: bus.id,
-                bus_number: bus.bus_number,
-                license_plate: bus.license_plate
-            },
-            activeSchedules: schedulesWithNames
+            include: [{
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops'
+                }]
+            }],
+            order: [['departure_time', 'ASC']]
         });
     }
 
-    return result;
-};
+    // 3. If still nothing, try to find any schedule for today (fallback)
+    if (!schedule) {
+        schedule = await Schedule.findOne({
+            where: {
+                bus_id: busId,
+                departure_time: { [Op.between]: [startOfDay, endOfDay] }
+            },
+            include: [{
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops'
+                }]
+            }],
+            order: [['departure_time', 'ASC']]
+        });
+    }
 
+    return schedule;
+};
 const getDailyReport = async (date) => {
     const [result] = await sequelize.query(
         `SELECT COUNT(*)                                                   as total_trips,
@@ -308,5 +326,5 @@ module.exports = {
     updateCurrentAndNextStop,
     getScheduleWithRouteStops,
     getStopName,
-    getAllActiveBusSchedules
+    findActiveScheduleByBus
 };

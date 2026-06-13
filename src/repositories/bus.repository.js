@@ -107,10 +107,13 @@ const findById2 =async(busId) =>{
 }
 
 // NEW: get all active buses
-const findAllActive=async () =>{
-    const [rows] = await db.query('SELECT * FROM bus WHERE status = ?', ['available']);
-    return rows; // array of bus objects
-}
+const findAllActive = async () => {
+    return await Bus.findAll({
+        where: {
+            status: ['available', 'on_route']   // active buses
+        }
+    });
+};
 const getStatistics = async () => {
     const [result] = await sequelize.query(`
         SELECT 
