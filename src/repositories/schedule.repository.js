@@ -309,6 +309,82 @@ const getDailyReport = async (date) => {
     );
     return result;
 };
+const findActiveScheduleByDriver = async (driverId) => {
+    const now = new Date();
+    // 1. Try to find ongoing schedule (current time between departure and arrival)
+    let schedule = await Schedule.findOne({
+        where: {
+            driver_id: driverId,
+            departure_time: { [Op.lte]: now },
+            arrival_time: { [Op.gte]: now },
+            trip_status: { [Op.in]: ['in_progress', 'scheduled'] }
+        },
+        include: [{
+            model: Route,
+            as: 'Route',
+            include: [{
+                model: RouteStop,
+                as: 'stops',
+                order: [['stop_order', 'ASC']]
+            }]
+        }]
+    });
+
+    // 2. If none, get the next upcoming schedule (departure_time >= now)
+    if (!schedule) {
+        schedule = await Schedule.findOne({
+            where: {
+                driver_id: driverId,
+                departure_time: { [Op.gte]: now },
+                trip_status: { [Op.in]: ['scheduled', 'in_progress'] }
+            },
+            include: [{
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops',
+                    order: [['stop_order', 'ASC']]
+                }]
+            }],
+            order: [['departure_time', 'ASC']]
+        });
+    }
+
+    // 3. If still none, try any schedule for today (fallback)
+    if (!schedule) {
+        const startOfDay = new Date(now);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(now);
+        endOfDay.setHours(23, 59, 59, 999);
+        schedule = await Schedule.findOne({
+            where: {
+                driver_id: driverId,
+                departure_time: { [Op.between]: [startOfDay, endOfDay] }
+            },
+            include: [{
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops',
+                    order: [['stop_order', 'ASC']]
+                }]
+            }],
+            order: [['departure_time', 'ASC']]
+        });
+    }
+
+    return schedule;
+};
+const updateScheduleStops = async (scheduleId, currentStopId, nextStopId) => {
+    const schedule = await Schedule.findByPk(scheduleId);
+    if (!schedule) return null;
+    return await schedule.update({
+        current_stop_id: currentStopId,
+        next_stop_id: nextStopId
+    });
+};
 
 module.exports = {
     findAll,
@@ -326,5 +402,7 @@ module.exports = {
     updateCurrentAndNextStop,
     getScheduleWithRouteStops,
     getStopName,
-    findActiveScheduleByBus
+    findActiveScheduleByBus,
+    updateScheduleStops,
+    findActiveScheduleByDriver
 };

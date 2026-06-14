@@ -128,6 +128,12 @@ const getStatistics = async () => {
     `);
     return result[0];
 };
+const findByEmailAndNIC = async (email, nicNumber) => {
+    return await Driver.findOne({
+        where: { email, nic_number: nicNumber },
+        attributes: { exclude: [] } // include all fields
+    });
+};
 
 module.exports = {
     findAll,
@@ -144,5 +150,6 @@ module.exports = {
     updateWorkingHours,
     resetDailyWorkingHours,
     updateRating,
-    getStatistics
+    getStatistics,
+    findByEmailAndNIC
 };

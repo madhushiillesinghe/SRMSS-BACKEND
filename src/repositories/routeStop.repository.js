@@ -6,24 +6,43 @@ const { RouteStop, sequelize } = require("../models");
 //         order: [["stop_order", "ASC"]]
 //     });
 // };
+// src/repositories/routeStop.repository.js
+
 const findByRouteId = async (routeId) => {
+    console.log("findByRouteId called with routeId:", routeId);
     try {
-        const [rows] = await sequelize.query(
-            `SELECT stop_id, stop_name, stop_order, distance_from_start, estimated_arrival_time
-             FROM srmss_route_stop
-             WHERE route_id = ?
-             ORDER BY stop_order ASC`,
-            {
-                replacements: [routeId],
-                type: sequelize.QueryTypes.SELECT
-            }
-        );
-        return rows || [];   //  always return an array
+        if (!routeId) {
+            console.error("findByRouteId called with null/undefined routeId");
+            return [];
+        }
+        const query = `SELECT stop_id, stop_name, stop_order, distance_from_start, estimated_arrival_time
+                       FROM srmss_route_stop
+                       WHERE route_id = ?
+                       ORDER BY stop_order ASC`;
+        console.log("Executing query:", query, "with replacement:", routeId);
+
+        const rows = await sequelize.query(query, {
+            replacements: [routeId],
+            type: sequelize.QueryTypes.SELECT
+        });
+        if (!rows) {
+            console.log("rows is null/undefined");
+            return [];
+        }
+        if (!Array.isArray(rows)) {
+            console.log("rows is not an array, it's:", typeof rows);
+            return [];
+        }
+        console.log("Returning rows count:", rows.length);
+        return rows;
     } catch (error) {
-        console.error("Error in findByRouteId:", error);
-        return [];           //  return empty array on error
+        console.error("Error in findByRouteId:", error.message);
+        console.error(error.stack);
+        return [];
     }
-};const findById = async (id) => {
+};
+
+const findById = async (id) => {
     return await RouteStop.findByPk(id);
 };
 
