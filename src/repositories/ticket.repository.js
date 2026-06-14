@@ -14,17 +14,42 @@ const findAll = async (filters = {}) => {
         ];
     }
 
-    return await Ticket.findAll({
+    const tickets = await Ticket.findAll({
         where,
         include: [
-            { model: Schedule, as: "schedule", include: [{ model: Route, as: "Route" }] },
-            { model: RouteStop, as: "fromStop" },
-            { model: RouteStop, as: "toStop" }
+            {
+                model: Schedule,
+                as: "schedule",
+                include: [{ model: Route, as: "Route" }]
+            }
         ],
         order: [["created_at", "DESC"]]
     });
-};
 
+    //  Manually fetch correct stop names for each ticket
+    const enrichedTickets = await Promise.all(tickets.map(async (ticket) => {
+        const ticketData = ticket.toJSON();
+
+        // Fetch from stop details
+        if (ticket.from_stop_id) {
+            const fromStop = await RouteStop.findByPk(ticket.from_stop_id);
+            if (fromStop) {
+                ticketData.from_stop_name = fromStop.stop_name;
+            }
+        }
+
+        // Fetch to stop details
+        if (ticket.to_stop_id) {
+            const toStop = await RouteStop.findByPk(ticket.to_stop_id);
+            if (toStop) {
+                ticketData.to_stop_name = toStop.stop_name;
+            }
+        }
+        return ticketData;
+    }));
+
+    return enrichedTickets;
+};
 const findById = async (id) => {
     return await Ticket.findByPk(id, {
         include: [

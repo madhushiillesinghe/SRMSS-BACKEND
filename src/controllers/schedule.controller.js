@@ -1,6 +1,8 @@
 // src/controllers/schedule.controller.js
 const ScheduleService = require("../services/schedule.service");
-
+const scheduleRepository = require("../repositories/schedule.repository");
+const routeStopRepository = require("../repositories/routeStop.repository");
+const DriverService = require("../services/driver.service");
 const getAllSchedules = async (req, res, next) => {
     try {
         const { status, route_id, bus_id, driver_id, from_date, to_date } = req.query;
@@ -203,6 +205,46 @@ const getDailyReport = async (req, res, next) => {
         res.json({ success: true, data: report });
     } catch (error) { next(error); }
 };
+// src/controllers/schedule.controller.js
+
+
+
+const getScheduleStops = async (req, res, next) => {
+    try {
+        const scheduleId = req.params.scheduleId;
+        const schedule = await scheduleRepository.findById(scheduleId);
+        if (!schedule) return res.status(404).json({ success: false, message: "Schedule not found" });
+
+        const stops = await routeStopRepository.findByRouteId(schedule.route_id);
+        const currentStopId = schedule.current_stop_id;
+        const nextStopId = schedule.next_stop_id;
+
+        const stopsWithStatus = stops.map(stop => ({
+            ...stop,
+            is_passed: currentStopId ? stop.stop_order <= stops.find(s => s.stop_id === currentStopId)?.stop_order : false,
+            is_current: stop.stop_id === currentStopId,
+            is_next: stop.stop_id === nextStopId,
+        }));
+        res.json({ success: true, data: stopsWithStatus });
+    } catch (error) { next(error); }
+};
+
+const markArrival = async (req, res, next) => {
+    try {
+        const scheduleId = req.params.scheduleId;
+        const { stopId } = req.body;
+        if (!stopId) return res.status(400).json({ success: false, message: "stopId is required" });
+
+        const result = await DriverService.markArrival(scheduleId, stopId);
+        res.json({ success: true, message: "Arrival recorded", data: result });
+    } catch (error) {
+        if (error.message === "Schedule not found" || error.message === "Stop not found in route") {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        next(error);
+    }
+};
+
 
 module.exports = {
     getAllSchedules,
@@ -219,5 +261,7 @@ module.exports = {
     updateTripStatus,
     deleteSchedule,
     getScheduleStatistics,
-    getDailyReport
+    getDailyReport,
+    getScheduleStops,
+    markArrival,
 };

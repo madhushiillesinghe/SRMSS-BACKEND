@@ -2,7 +2,6 @@
 const routeRepository = require("../repositories/route.repository");
 const routeStopRepository = require("../repositories/routeStop.repository");
 const mapsService = require("./maps.service");
-
 class RouteService {
     static async getAllRoutes(filters) {
         return await routeRepository.findAll(filters);
@@ -21,29 +20,55 @@ class RouteService {
     }
 
     static async createRoute(data) {
-        const existing = await routeRepository.findByCode(data.route_code);
-        if (existing) throw new Error("Route code already exists");
 
-        // ✅ Auto calculate distance using Google Maps
-        let distanceData = null;
-        if (data.start_location && data.end_location) {
+        const existing =
+            await routeRepository.findByCode(
+                data.route_code
+            );
+
+        if (existing) {
+            throw new Error(
+                "Route code already exists"
+            );
+        }
+
+        if (
+            data.start_location &&
+            data.end_location
+        ) {
             try {
-                distanceData = await mapsService.calculateDistance(
-                    data.start_location,
-                    data.end_location
+
+                const distanceData =
+                    await mapsService.calculateDistance(
+                        data.start_location,
+                        data.end_location
+                    );
+
+                data.total_distance =
+                    distanceData.distanceKm;
+
+                data.estimated_duration =
+                    distanceData.durationMin;
+
+                console.log(
+                    `✅ Distance calculated: ${distanceData.distanceKm} km, ${distanceData.durationMin} min`
                 );
-                data.total_distance = distanceData.distanceKm;
-                data.estimated_duration = distanceData.durationMin;
-                console.log(`✅ Distance calculated: ${distanceData.distanceKm} km, ${distanceData.durationMin} min`);
+
             } catch (error) {
-                console.error("Distance calculation failed:", error.message);
-                throw new Error("Could not calculate route distance. Please check locations.");
+
+                console.error(
+                    "Distance calculation failed:",
+                    error.message
+                );
+
+                throw new Error(
+                    "Failed to calculate route distance"
+                );
             }
         }
 
         return await routeRepository.create(data);
     }
-
     static async updateRoute(id, data) {
         const route = await routeRepository.findById(id);
         if (!route) throw new Error("Route not found");
@@ -58,8 +83,10 @@ class RouteService {
                 );
                 data.total_distance = distanceData.distanceKm;
                 data.estimated_duration = distanceData.durationMin;
+                console.log(`✅ Distance recalculated: ${distanceData.distanceKm} km`);
             } catch (error) {
                 console.error("Distance recalculation failed:", error.message);
+                // Keep existing values
             }
         }
 

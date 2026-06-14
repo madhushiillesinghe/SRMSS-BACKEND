@@ -1,5 +1,7 @@
 const driverRepository = require("../repositories/driver.repository");
 const routeRepository = require("../repositories/route.repository");
+const scheduleRepository = require("../repositories/schedule.repository");
+
 
 class DriverService {
     static async getAllDrivers(filters) {
@@ -123,6 +125,42 @@ class DriverService {
             ...driver.toJSON(),
             upcoming_schedules: driverSchedules
         };
+    }
+    static async loginDriver(email, nicNumber) {
+        const driver = await driverRepository.findByEmailAndNIC(email, nicNumber);
+        if (!driver) throw new Error("Invalid email or NIC number");
+        if (driver.status !== "available") throw new Error("Driver account is not available");
+        // Update last login? (optional, add a field to Driver model if needed)
+        return driver;
+    }
+    static generateToken(driver) {
+        return jwt.sign(
+            { id: driver.driver_id, role: "driver", type: "access" },
+            process.env.JWT_SECRET,
+            { expiresIn: "12h" }
+        );
+    }
+
+    static async getActiveSchedule(driverId) {
+        const schedule = await scheduleRepository.findActiveScheduleByDriver(driverId);
+        console.log(schedule,"scehdule in")
+        if (!schedule) throw new Error("No active schedule found");
+        return schedule;
+    }
+    static async markArrival(scheduleId, stopId) {
+        const schedule = await scheduleRepository.findById(scheduleId);
+        if (!schedule) throw new Error("Schedule not found");
+
+        const route = schedule.Route;
+        if (!route || !route.stops) throw new Error("Route stops not defined");
+
+        const stops = route.stops.sort((a,b) => a.stop_order - b.stop_order);
+        const currentIndex = stops.findIndex(s => s.stop_id === stopId);
+        if (currentIndex === -1) throw new Error("Stop not found in route");
+
+        const nextStop = stops[currentIndex + 1] || null;
+        await scheduleRepository.updateScheduleStops(scheduleId, stopId, nextStop?.stop_id || null);
+        return { scheduleId, currentStopId: stopId, nextStopId: nextStop?.stop_id || null };
     }
 }
 

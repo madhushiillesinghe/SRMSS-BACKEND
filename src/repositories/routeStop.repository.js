@@ -1,10 +1,45 @@
 const { RouteStop, sequelize } = require("../models");
 
+// const findByRouteId = async (routeId) => {
+//     return await RouteStop.findAll({
+//         where: { route_id: routeId },
+//         order: [["stop_order", "ASC"]]
+//     });
+// };
+// src/repositories/routeStop.repository.js
+
 const findByRouteId = async (routeId) => {
-    return await RouteStop.findAll({
-        where: { route_id: routeId },
-        order: [["stop_order", "ASC"]]
-    });
+    console.log("findByRouteId called with routeId:", routeId);
+    try {
+        if (!routeId) {
+            console.error("findByRouteId called with null/undefined routeId");
+            return [];
+        }
+        const query = `SELECT stop_id, stop_name, stop_order, distance_from_start, estimated_arrival_time
+                       FROM srmss_route_stop
+                       WHERE route_id = ?
+                       ORDER BY stop_order ASC`;
+        console.log("Executing query:", query, "with replacement:", routeId);
+
+        const rows = await sequelize.query(query, {
+            replacements: [routeId],
+            type: sequelize.QueryTypes.SELECT
+        });
+        if (!rows) {
+            console.log("rows is null/undefined");
+            return [];
+        }
+        if (!Array.isArray(rows)) {
+            console.log("rows is not an array, it's:", typeof rows);
+            return [];
+        }
+        console.log("Returning rows count:", rows.length);
+        return rows;
+    } catch (error) {
+        console.error("Error in findByRouteId:", error.message);
+        console.error(error.stack);
+        return [];
+    }
 };
 
 const findById = async (id) => {

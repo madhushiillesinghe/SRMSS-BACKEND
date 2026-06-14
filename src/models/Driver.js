@@ -51,7 +51,7 @@ const Driver = sequelize.define("Driver", {
         field: 'license_expiry'
     },
     license_class: {
-        type: DataTypes.STRING(10),
+        type: DataTypes.STRING(100),
         field: 'license_class'
     },
     date_of_birth: {

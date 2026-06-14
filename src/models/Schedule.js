@@ -80,6 +80,16 @@ const Schedule = sequelize.define("Schedule", {
     notes: {
         type: DataTypes.TEXT
     },
+    current_stop_id: {
+        type: DataTypes.INTEGER,
+        field: 'current_stop_id',
+        references: { model: 'srmss_route_stop', key: 'stop_id' }
+    },
+    next_stop_id: {
+        type: DataTypes.INTEGER,
+        field: 'next_stop_id',
+        references: { model: 'srmss_route_stop', key: 'stop_id' }
+    },
     created_by: {
         type: DataTypes.INTEGER,
         field: 'created_by',

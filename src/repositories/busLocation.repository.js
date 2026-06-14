@@ -1,4 +1,4 @@
-const { BusLocation, Bus, Schedule, RouteStop, sequelize } = require("../models");
+const { BusLocation, Bus, Schedule, RouteStop, sequelize,Route } = require("../models");
 const { Op } = require("sequelize");
 
 const findAll = async (filters = {}) => {
@@ -46,103 +46,57 @@ const findLatestByBusId = async (busId) => {
         order: [["recorded_at", "DESC"]]
     });
 };
+// src/repositories/busLocation.repository.js
+// src/repositories/busLocation.repository.js
 
-const findLatestByScheduleId = async (scheduleId) => {
-    return await BusLocation.findOne({
-        where: { schedule_id: scheduleId },
-        include: [{ model: Bus, as: "Bus" }],
-        order: [["recorded_at", "DESC"]]
+const getRouteProgressFromSchedule = async (busId, scheduleId) => {
+    const schedule = await Schedule.findOne({
+        where: { schedule_id: scheduleId, bus_id: busId },
+        include: [{
+            model: Route,
+            as: 'Route',
+            include: [{
+                model: RouteStop,
+                as: 'stops',
+                order: [['stop_order', 'ASC']]
+            }]
+        }]
     });
+    if (!schedule) return null;
+    const route = schedule.Route;
+    const stops = route.stops;
+    if (!stops.length) return null;
+
+    const currentStopId = schedule.current_stop_id;
+    const nextStopId = schedule.next_stop_id;
+    let currentStop = null, nextStop = null;
+    if (currentStopId) currentStop = stops.find(s => s.stop_id === currentStopId);
+    if (nextStopId) nextStop = stops.find(s => s.stop_id === nextStopId);
+    if (!currentStop && !nextStop && stops.length) nextStop = stops[0];
+
+    const distanceTraveled = currentStop ? currentStop.distance_from_start : 0;
+    const totalDistance = route.total_distance;
+    const progressPercentage = totalDistance > 0 ? (distanceTraveled / totalDistance) * 100 : 0;
+    let estimatedMinutes = null;
+    if (nextStop) {
+        const distToNext = nextStop.distance_from_start - distanceTraveled;
+        estimatedMinutes = (distToNext / 40) * 60; // rough 40 km/h
+    }
+
+    return {
+        route: { route_id: route.route_id, total_distance: totalDistance, estimated_duration: route.estimated_duration },
+        current_position: { latitude: null, longitude: null, distance_traveled: distanceTraveled, elapsed_time: 0, speed: 0, progress_percentage: progressPercentage },
+        current_stop: currentStop ? { stop_id: currentStop.stop_id, stop_name: currentStop.stop_name, stop_order: currentStop.stop_order, distance_from_start: currentStop.distance_from_start, latitude: currentStop.latitude, longitude: currentStop.longitude } : null,
+        next_stop: nextStop ? { stop_id: nextStop.stop_id, stop_name: nextStop.stop_name, distance_to_next: nextStop.distance_from_start - distanceTraveled, estimated_minutes: estimatedMinutes, latitude: nextStop.latitude, longitude: nextStop.longitude } : null,
+        all_stops: stops.map(stop => ({ stop_id: stop.stop_id, stop_name: stop.stop_name, stop_order: stop.stop_order, distance_from_start: stop.distance_from_start, estimated_arrival_time: stop.estimated_arrival_time, is_passed: currentStop ? stop.stop_order <= currentStop.stop_order : false }))
+    };
 };
 
-const findHistoryByBusId = async (busId, limit = 100) => {
-    return await BusLocation.findAll({
-        where: { bus_id: busId },
-        include: [{ model: Bus, as: "Bus" }],
-        order: [["recorded_at", "DESC"]],
-        limit
-    });
-};
+// The main endpoint will use only schedule data
+const getBusRouteProgress = getRouteProgressFromSchedule; // direct alias
 
-const create = async (data) => {
-    return await BusLocation.create(data);
-};
-
-const update = async (id, data) => {
-    const location = await BusLocation.findByPk(id);
-    if (!location) return null;
-    return await location.update(data);
-};
-
-const deleteLocation = async (id) => {
-    const location = await BusLocation.findByPk(id);
-    if (!location) return null;
-    await location.destroy();
-    return true;
-};
-
-const deleteOldLocations = async (days = 30) => {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
-
-    return await BusLocation.destroy({
-        where: { recorded_at: { [Op.lt]: cutoffDate } }
-    });
-};
-
-const getActiveBusesLocations = async () => {
-    const [result] = await sequelize.query(`
-        SELECT *
-        FROM srmss_bus_location
-        WHERE status = 'active'
-          AND recorded_at IN (
-            SELECT MAX(recorded_at)
-            FROM srmss_bus_location
-            GROUP BY bus_id
-        )
-    `);
-
-    return result;
-};const getBusRouteProgress = async (busId, scheduleId) => {
-    const [result] = await sequelize.query(`
-        SELECT
-            l.*,
-            r.total_distance,
-            r.estimated_duration,
-            rs.stop_name as next_stop_name,
-            rs.distance_from_start as next_stop_distance,
-            (rs.distance_from_start - l.distance_traveled) as remaining_distance,
-            CASE
-                WHEN l.speed > 0 THEN (rs.distance_from_start - l.distance_traveled) / l.speed * 60
-                ELSE rs.estimated_arrival_time - l.elapsed_time
-                END as estimated_minutes_to_next_stop
-        FROM srmss_bus_location l
-                 JOIN srmss_schedule s ON l.schedule_id = s.schedule_id
-                 JOIN srmss_route r ON s.route_id = r.route_id
-                 LEFT JOIN srmss_route_stop rs
-                           ON rs.route_id = r.route_id
-                               AND rs.distance_from_start > l.distance_traveled
-        WHERE l.bus_id = :busId
-          AND l.schedule_id = :scheduleId
-        ORDER BY rs.distance_from_start ASC
-            LIMIT 1
-    `, {
-        replacements: { busId, scheduleId },
-        type: sequelize.QueryTypes.SELECT
-    });
-
-    return result;
-};
 module.exports = {
-    findAll,
-    findById,
-    findLatestByBusId,
-    findLatestByScheduleId,
-    findHistoryByBusId,
-    create,
-    update,
-    deleteLocation,
-    deleteOldLocations,
-    getActiveBusesLocations,
-    getBusRouteProgress
+    // ... other CRUD (findAll, create, etc. if needed)
+    getBusRouteProgress,
+    getRouteProgressFromSchedule
 };

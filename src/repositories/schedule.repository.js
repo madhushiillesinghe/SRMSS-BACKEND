@@ -1,4 +1,4 @@
-const { Schedule, Route, Bus, Driver, Ticket, sequelize ,RouteStop} = require("../models");
+const { Schedule, Route, Bus, Driver, Ticket, sequelize, RouteStop } = require("../models");
 const { Op } = require("sequelize");
 
 const findAll = async (filters = {}) => {
@@ -21,10 +21,8 @@ const findAll = async (filters = {}) => {
             { model: Route },
             { model: Bus },
             { model: Driver },
-            {
-                model: Ticket,
-                as: "tickets"
-            }        ],
+            { model: Ticket, as: "tickets" }
+        ],
         order: [["departure_time", "ASC"]]
     });
 };
@@ -36,15 +34,13 @@ const findById = async (id) => {
                 model: Route,
                 include: [{
                     model: RouteStop,
-                    as: "stops"  // This matches your association: as: "stops"
+                    as: "stops"
                 }]
             },
             { model: Bus },
-            { model: Driver},
-            {
-                model: Ticket,
-                as: "tickets"
-            }        ]
+            { model: Driver },
+            { model: Ticket, as: "tickets" }
+        ]
     });
 };
 
@@ -132,12 +128,8 @@ const deleteSchedule = async (id) => {
 const checkConflicts = async (routeId, busId, driverId, departureTime, arrivalTime, excludeId = null) => {
     const where = {
         [Op.or]: [
-            {
-                departure_time: { [Op.between]: [departureTime, arrivalTime] }
-            },
-            {
-                arrival_time: { [Op.between]: [departureTime, arrivalTime] }
-            },
+            { departure_time: { [Op.between]: [departureTime, arrivalTime] } },
+            { arrival_time: { [Op.between]: [departureTime, arrivalTime] } },
             {
                 [Op.and]: [
                     { departure_time: { [Op.lte]: departureTime } },
@@ -169,17 +161,16 @@ const checkConflicts = async (routeId, busId, driverId, departureTime, arrivalTi
 const getStatistics = async () => {
     try {
         const [result] = await sequelize.query(`
-            SELECT 
-                COUNT(*) as total_schedules,
-                SUM(CASE WHEN trip_status = 'completed' THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN trip_status = 'delayed' THEN 1 ELSE 0 END) as \`delayed\`,
-                SUM(CASE WHEN trip_status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
-                SUM(CASE WHEN trip_status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
-                SUM(CASE WHEN trip_status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
-                SUM(passenger_count) as total_passengers,
-                SUM(revenue) as total_revenue,
-                AVG(passenger_count) as avg_passengers_per_trip,
-                AVG(revenue) as avg_revenue_per_trip
+            SELECT COUNT(*)                                                     as total_schedules,
+                   SUM(CASE WHEN trip_status = 'completed' THEN 1 ELSE 0 END)   as completed,
+                   SUM(CASE WHEN trip_status = 'delayed' THEN 1 ELSE 0 END)     as \`delayed\`,
+                   SUM(CASE WHEN trip_status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+                   SUM(CASE WHEN trip_status = 'scheduled' THEN 1 ELSE 0 END)   as scheduled,
+                   SUM(CASE WHEN trip_status = 'cancelled' THEN 1 ELSE 0 END)   as cancelled,
+                   SUM(passenger_count)                                         as total_passengers,
+                   SUM(revenue)                                                 as total_revenue,
+                   AVG(passenger_count)                                         as avg_passengers_per_trip,
+                   AVG(revenue)                                                 as avg_revenue_per_trip
             FROM srmss_schedule
             WHERE DATE(departure_time) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         `);
@@ -200,15 +191,115 @@ const getStatistics = async () => {
         };
     }
 };
+
+const updateCurrentAndNextStop = async (scheduleId, currentStopId, nextStopId) => {
+    const schedule = await Schedule.findByPk(scheduleId);
+    if (!schedule) return null;
+    return await schedule.update({
+        current_stop_id: currentStopId,
+        next_stop_id: nextStopId
+    });
+};
+
+const getScheduleWithRouteStops = async (scheduleId) => {
+    return await Schedule.findByPk(scheduleId, {
+        include: [
+            {
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops',
+                    order: [['stop_order', 'ASC']]
+                }]
+            }
+        ]
+    });
+}; // ✅ missing closing brace fixed
+
+// Helper to get stop name
+const getStopName = async (stopId) => {
+    const stop = await RouteStop.findByPk(stopId);
+    return stop ? stop.stop_name : null;
+};
+
+//  Corrected: getAllActiveBusSchedules – no syntax errors, uses Promise.all
+// src/repositories/schedule.repository.js
+const findActiveScheduleByBus = async (busId) => {
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // 1. Try to find an ongoing schedule (in_progress AND time window matches)
+    let schedule = await Schedule.findOne({
+        where: {
+            bus_id: busId,
+            departure_time: { [Op.lte]: now },
+            arrival_time: { [Op.gte]: now },
+            trip_status: 'in_progress'
+        },
+        include: [{
+            model: Route,
+            as: 'Route',
+            include: [{
+                model: RouteStop,
+                as: 'stops'
+            }]
+        }],
+        order: [['departure_time', 'ASC']]
+    });
+
+    // 2. If no ongoing schedule, get the next scheduled trip for today (or future)
+    if (!schedule) {
+        schedule = await Schedule.findOne({
+            where: {
+                bus_id: busId,
+                departure_time: { [Op.gte]: now },   // future or exactly now
+                trip_status: { [Op.in]: ['scheduled', 'in_progress'] }
+            },
+            include: [{
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops'
+                }]
+            }],
+            order: [['departure_time', 'ASC']]
+        });
+    }
+
+    // 3. If still nothing, try to find any schedule for today (fallback)
+    if (!schedule) {
+        schedule = await Schedule.findOne({
+            where: {
+                bus_id: busId,
+                departure_time: { [Op.between]: [startOfDay, endOfDay] }
+            },
+            include: [{
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops'
+                }]
+            }],
+            order: [['departure_time', 'ASC']]
+        });
+    }
+
+    return schedule;
+};
 const getDailyReport = async (date) => {
     const [result] = await sequelize.query(
-        `SELECT
-             COUNT(*) as total_trips,
-             SUM(CASE WHEN trip_status = 'completed' THEN 1 ELSE 0 END) as completed_trips,
-             SUM(CASE WHEN trip_status = 'delayed' THEN 1 ELSE 0 END) as delayed_trips,
-             SUM(passenger_count) as total_passengers,
-             SUM(revenue) as total_revenue,
-             AVG(delay_minutes) as avg_delay_minutes
+        `SELECT COUNT(*)                                                   as total_trips,
+                SUM(CASE WHEN trip_status = 'completed' THEN 1 ELSE 0 END) as completed_trips,
+                SUM(CASE WHEN trip_status = 'delayed' THEN 1 ELSE 0 END)   as delayed_trips,
+                SUM(passenger_count)                                       as total_passengers,
+                SUM(revenue)                                               as total_revenue,
+                AVG(delay_minutes)                                         as avg_delay_minutes
          FROM srmss_schedule
          WHERE DATE(departure_time) = :date`,
         {
@@ -217,6 +308,82 @@ const getDailyReport = async (date) => {
         }
     );
     return result;
+};
+const findActiveScheduleByDriver = async (driverId) => {
+    const now = new Date();
+    // 1. Try to find ongoing schedule (current time between departure and arrival)
+    let schedule = await Schedule.findOne({
+        where: {
+            driver_id: driverId,
+            departure_time: { [Op.lte]: now },
+            arrival_time: { [Op.gte]: now },
+            trip_status: { [Op.in]: ['in_progress', 'scheduled'] }
+        },
+        include: [{
+            model: Route,
+            as: 'Route',
+            include: [{
+                model: RouteStop,
+                as: 'stops',
+                order: [['stop_order', 'ASC']]
+            }]
+        }]
+    });
+
+    // 2. If none, get the next upcoming schedule (departure_time >= now)
+    if (!schedule) {
+        schedule = await Schedule.findOne({
+            where: {
+                driver_id: driverId,
+                departure_time: { [Op.gte]: now },
+                trip_status: { [Op.in]: ['scheduled', 'in_progress'] }
+            },
+            include: [{
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops',
+                    order: [['stop_order', 'ASC']]
+                }]
+            }],
+            order: [['departure_time', 'ASC']]
+        });
+    }
+
+    // 3. If still none, try any schedule for today (fallback)
+    if (!schedule) {
+        const startOfDay = new Date(now);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(now);
+        endOfDay.setHours(23, 59, 59, 999);
+        schedule = await Schedule.findOne({
+            where: {
+                driver_id: driverId,
+                departure_time: { [Op.between]: [startOfDay, endOfDay] }
+            },
+            include: [{
+                model: Route,
+                as: 'Route',
+                include: [{
+                    model: RouteStop,
+                    as: 'stops',
+                    order: [['stop_order', 'ASC']]
+                }]
+            }],
+            order: [['departure_time', 'ASC']]
+        });
+    }
+
+    return schedule;
+};
+const updateScheduleStops = async (scheduleId, currentStopId, nextStopId) => {
+    const schedule = await Schedule.findByPk(scheduleId);
+    if (!schedule) return null;
+    return await schedule.update({
+        current_stop_id: currentStopId,
+        next_stop_id: nextStopId
+    });
 };
 
 module.exports = {
@@ -231,5 +398,11 @@ module.exports = {
     deleteSchedule,
     checkConflicts,
     getStatistics,
-    getDailyReport
+    getDailyReport,
+    updateCurrentAndNextStop,
+    getScheduleWithRouteStops,
+    getStopName,
+    findActiveScheduleByBus,
+    updateScheduleStops,
+    findActiveScheduleByDriver
 };

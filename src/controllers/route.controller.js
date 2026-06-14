@@ -159,7 +159,36 @@ const calculateFare = async (req, res, next) => {
         next(error);
     }
 };
+// Add this method to your existing RouteController class
+const calculateDistance=async (req, res) =>{
+    try {
+        const { start_location, end_location } = req.body;
 
+        if (!start_location || !end_location) {
+            return res.status(400).json({
+                success: false,
+                message: 'Start location and end location are required'
+            });
+        }
+
+        const mapsService = require('../services/maps.service');
+        const result = await mapsService.calculateDistance(start_location, end_location);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                distance_km: result.distanceKm,
+                duration_min: result.durationMin
+            }
+        });
+    } catch (error) {
+        console.error('Distance calculation error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to calculate distance'
+        });
+    }
+}
 module.exports = {
     getAllRoutes,
     getRouteById,
@@ -170,5 +199,6 @@ module.exports = {
     getActiveRoutes,
     getRouteWithStops,
     getRouteStatistics,
-    calculateFare
+    calculateFare,
+    calculateDistance
 };
