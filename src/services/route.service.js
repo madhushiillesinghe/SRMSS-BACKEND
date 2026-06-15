@@ -51,7 +51,7 @@ class RouteService {
                     distanceData.durationMin;
 
                 console.log(
-                    `✅ Distance calculated: ${distanceData.distanceKm} km, ${distanceData.durationMin} min`
+                    `Distance calculated: ${distanceData.distanceKm} km, ${distanceData.durationMin} min`
                 );
 
             } catch (error) {
@@ -73,7 +73,7 @@ class RouteService {
         const route = await routeRepository.findById(id);
         if (!route) throw new Error("Route not found");
 
-        // ✅ Recalculate distance if locations changed
+        // Recalculate distance if locations changed
         if ((data.start_location && data.start_location !== route.start_location) ||
             (data.end_location && data.end_location !== route.end_location)) {
             try {
@@ -83,7 +83,7 @@ class RouteService {
                 );
                 data.total_distance = distanceData.distanceKm;
                 data.estimated_duration = distanceData.durationMin;
-                console.log(`✅ Distance recalculated: ${distanceData.distanceKm} km`);
+                console.log(` Distance recalculated: ${distanceData.distanceKm} km`);
             } catch (error) {
                 console.error("Distance recalculation failed:", error.message);
                 // Keep existing values

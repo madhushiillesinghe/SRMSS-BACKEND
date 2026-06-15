@@ -1,4 +1,5 @@
 const FuelLogService = require("../services/fuelLog.service");
+
 const getAllFuelLogs = async (req, res, next) => {
     try {
         const { bus_id, from_date, to_date } = req.query;

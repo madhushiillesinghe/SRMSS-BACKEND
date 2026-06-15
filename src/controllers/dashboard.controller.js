@@ -7,6 +7,7 @@ const fuelLogRepository = require("../repositories/fuelLog.repository");
 const maintenanceRepository = require("../repositories/maintenance.repository");
 const trackingService = require("../services/tracking.service");
 const { sequelize } = require("../models");
+
 const getDashboardStats = async (req, res, next) => {
     try {
         const [

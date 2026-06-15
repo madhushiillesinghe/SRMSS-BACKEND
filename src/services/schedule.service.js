@@ -89,13 +89,13 @@ class ScheduleService {
                 });
                 schedules.push(newSchedule);
 
-                console.log(`✅ Schedule created for ${departureTime.toLocaleTimeString()}`);
+                console.log(` Schedule created for ${departureTime.toLocaleTimeString()}`);
             } catch (error) {
                 errors.push({
                     time: trip.time,
                     error: error.message
                 });
-                console.log(`❌ Failed to create schedule for ${trip.time}: ${error.message}`);
+                console.log(`Failed to create schedule for ${trip.time}: ${error.message}`);
             }
         }
 
@@ -154,7 +154,7 @@ class ScheduleService {
         return schedules;
     }
 
-    // ✅ Create Weekly Schedule Template
+    //  Create Weekly Schedule Template
     static async createWeeklySchedule(data) {
         const { routeId, busId, driverId, weekStartDate, tripTimes, tripType } = data;
 
@@ -208,7 +208,7 @@ class ScheduleService {
         };
     }
 
-    // ✅ Get All Schedules for a Bus on a Specific Date
+    // Get All Schedules for a Bus on a Specific Date
     static async getBusSchedulesForDate(busId, date) {
         const startDate = new Date(date);
         startDate.setHours(0, 0, 0, 0);
@@ -222,7 +222,7 @@ class ScheduleService {
         });
     }
 
-    // ✅ Get Bus Daily Schedule (All trips for a bus)
+    // Get Bus Daily Schedule (All trips for a bus)
     static async getBusDailySchedule(busId, date) {
         const schedules = await this.getBusSchedulesForDate(busId, date);
 
@@ -306,7 +306,7 @@ class ScheduleService {
         return await scheduleRepository.getDailyReport(date);
     }
 
-    // ✅ Get Weekly Schedule Summary
+    // Get Weekly Schedule Summary
     static async getWeeklyScheduleSummary(startDate, endDate) {
         const schedules = await scheduleRepository.findAll({
             from_date: startDate,

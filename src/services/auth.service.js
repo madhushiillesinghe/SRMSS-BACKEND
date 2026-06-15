@@ -16,14 +16,14 @@ class AuthService {
             throw new Error("Account is inactive");
         }
 
-        // ✅ Debug logs
+        // Debug logs
         console.log("=== LOGIN DEBUG ===");
         console.log("Username:", username);
         console.log("Password entered:", password);
         console.log("Stored hash:", admin.password);
         console.log("=================");
 
-        // ✅ Direct bcrypt compare
+        //  Direct bcrypt compare
         const isValidPassword = await bcrypt.compare(password, admin.password);
 
         console.log("Password valid:", isValidPassword);
