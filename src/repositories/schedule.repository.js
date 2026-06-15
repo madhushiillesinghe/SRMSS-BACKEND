@@ -223,8 +223,6 @@ const getStopName = async (stopId) => {
     return stop ? stop.stop_name : null;
 };
 
-//  Corrected: getAllActiveBusSchedules – no syntax errors, uses Promise.all
-// src/repositories/schedule.repository.js
 const findActiveScheduleByBus = async (busId) => {
     const now = new Date();
     const startOfDay = new Date(now);
@@ -292,6 +290,7 @@ const findActiveScheduleByBus = async (busId) => {
 
     return schedule;
 };
+
 const getDailyReport = async (date) => {
     const [result] = await sequelize.query(
         `SELECT COUNT(*)                                                   as total_trips,
@@ -309,6 +308,7 @@ const getDailyReport = async (date) => {
     );
     return result;
 };
+
 const findActiveScheduleByDriver = async (driverId) => {
     const now = new Date();
     // 1. Try to find ongoing schedule (current time between departure and arrival)

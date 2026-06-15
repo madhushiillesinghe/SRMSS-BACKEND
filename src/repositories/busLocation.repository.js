@@ -96,7 +96,7 @@ const getRouteProgressFromSchedule = async (busId, scheduleId) => {
 const getBusRouteProgress = getRouteProgressFromSchedule; // direct alias
 
 module.exports = {
-    // ... other CRUD (findAll, create, etc. if needed)
+    findAll,
     getBusRouteProgress,
     getRouteProgressFromSchedule
 };

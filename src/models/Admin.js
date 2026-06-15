@@ -101,7 +101,7 @@ Admin.createDefaultAdmin = async function() {
         return true;
     }
 
-    console.log("ℹ️ Default admin user already exists");
+    console.log(" Default admin user already exists");
     return false;
 };
 

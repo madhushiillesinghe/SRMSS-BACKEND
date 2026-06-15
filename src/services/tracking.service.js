@@ -41,7 +41,7 @@ class TrackingService {
                 if (nextStop) {
                     const remainingDistance = nextStop.distance_from_start - distanceTraveled;
 
-                    // ✅ Use Google Maps for accurate ETA if coordinates available
+                    // Use Google Maps for accurate ETA if coordinates available
                     if (data.latitude && data.longitude && nextStop.latitude && nextStop.longitude) {
                         const etaResult = await mapsService.getETA(
                             data.latitude, data.longitude,
@@ -54,14 +54,14 @@ class TrackingService {
                             : nextStop.estimated_arrival_time - elapsedTime;
                     }
 
-                    // ✅ Check if bus has arrived at stop
+                    //  Check if bus has arrived at stop
                     const distanceToStop = this.calculateDistance(
                         data.latitude, data.longitude,
                         nextStop.latitude, nextStop.longitude
                     );
 
                     if (distanceToStop < 0.1) { // 100 meters
-                        console.log(`🚌 Bus ${data.bus_id} has arrived at ${nextStop.stop_name}`);
+                        console.log(` Bus ${data.bus_id} has arrived at ${nextStop.stop_name}`);
                         // Trigger arrival notification
                         await this.handleBusArrival(data.bus_id, scheduleId, nextStop.stop_id);
                     }
