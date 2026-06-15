@@ -215,7 +215,7 @@ const getScheduleWithRouteStops = async (scheduleId) => {
             }
         ]
     });
-}; // ✅ missing closing brace fixed
+}; //  missing closing brace fixed
 
 // Helper to get stop name
 const getStopName = async (stopId) => {
@@ -230,13 +230,16 @@ const findActiveScheduleByBus = async (busId) => {
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // 1. Try to find an ongoing schedule (in_progress AND time window matches)
+    // Define statuses that are considered "active" (not completed or cancelled)
+    const activeStatuses = ['scheduled', 'in_progress', 'on_time', 'delayed'];
+
+    // 1. Try to find an ongoing schedule (departure <= now <= arrival)
     let schedule = await Schedule.findOne({
         where: {
             bus_id: busId,
             departure_time: { [Op.lte]: now },
             arrival_time: { [Op.gte]: now },
-            trip_status: 'in_progress'
+            trip_status: { [Op.in]: activeStatuses }
         },
         include: [{
             model: Route,
@@ -249,13 +252,13 @@ const findActiveScheduleByBus = async (busId) => {
         order: [['departure_time', 'ASC']]
     });
 
-    // 2. If no ongoing schedule, get the next scheduled trip for today (or future)
+    // 2. If none ongoing, get the next upcoming schedule (departure >= now)
     if (!schedule) {
         schedule = await Schedule.findOne({
             where: {
                 bus_id: busId,
-                departure_time: { [Op.gte]: now },   // future or exactly now
-                trip_status: { [Op.in]: ['scheduled', 'in_progress'] }
+                departure_time: { [Op.gte]: now },
+                trip_status: { [Op.in]: activeStatuses }
             },
             include: [{
                 model: Route,
@@ -269,12 +272,13 @@ const findActiveScheduleByBus = async (busId) => {
         });
     }
 
-    // 3. If still nothing, try to find any schedule for today (fallback)
+    // 3. Fallback – any schedule today (not completed/cancelled)
     if (!schedule) {
         schedule = await Schedule.findOne({
             where: {
                 bus_id: busId,
-                departure_time: { [Op.between]: [startOfDay, endOfDay] }
+                departure_time: { [Op.between]: [startOfDay, endOfDay] },
+                trip_status: { [Op.in]: activeStatuses }
             },
             include: [{
                 model: Route,
@@ -290,7 +294,6 @@ const findActiveScheduleByBus = async (busId) => {
 
     return schedule;
 };
-
 const getDailyReport = async (date) => {
     const [result] = await sequelize.query(
         `SELECT COUNT(*)                                                   as total_trips,
