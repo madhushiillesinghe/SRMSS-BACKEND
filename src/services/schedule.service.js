@@ -73,13 +73,28 @@ class ScheduleService {
         const sortedTrips = [...tripTimes].sort((a, b) => {
             return a.time.localeCompare(b.time);
         });
-
         for (const trip of sortedTrips) {
             try {
                 const departureTime = new Date(trip.time);
-                const arrivalTime = new Date(departureTime.getTime() + route.estimated_duration * 60000);
 
+                if (isNaN(departureTime.getTime())) {
+                    throw new Error(`Invalid departure time: ${trip.time}`);
+                }
+
+                const estimatedDuration = Number(route.estimated_duration);
+
+                if (isNaN(estimatedDuration)) {
+                    throw new Error(
+                        `Invalid route estimated_duration: ${route.estimated_duration}`
+                    );
+                }
+
+                const arrivalTime = new Date(
+                    departureTime.getTime() + estimatedDuration * 60000
+                );
+                const scheduleCode = await scheduleRepository.getNextScheduleCode();
                 const newSchedule = await this.createSchedule({
+                    schedule_code: scheduleCode,
                     route_id: routeId,
                     bus_id: busId,
                     driver_id: driverId,
@@ -87,18 +102,18 @@ class ScheduleService {
                     arrival_time: arrivalTime,
                     trip_type: trip.type || tripType || "regular"
                 });
+
                 schedules.push(newSchedule);
 
-                console.log(` Schedule created for ${departureTime.toLocaleTimeString()}`);
             } catch (error) {
+                console.error(error);
+
                 errors.push({
                     time: trip.time,
                     error: error.message
                 });
-                console.log(`Failed to create schedule for ${trip.time}: ${error.message}`);
             }
         }
-
         return {
             success: schedules.length > 0,
             created: schedules,

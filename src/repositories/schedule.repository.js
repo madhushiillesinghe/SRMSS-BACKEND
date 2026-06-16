@@ -157,6 +157,20 @@ const checkConflicts = async (routeId, busId, driverId, departureTime, arrivalTi
         driverConflicts
     };
 };
+const getNextScheduleCode = async () => {
+    const lastSchedule = await Schedule.findOne({
+        order: [["schedule_id", "DESC"]]
+    });
+
+    let nextNumber = 1;
+
+    if (lastSchedule) {
+        const lastCode = lastSchedule.schedule_code;
+        nextNumber = parseInt(lastCode.slice(-4)) + 1;
+    }
+
+    return `SCH${new Date().getFullYear()}${String(nextNumber).padStart(4, "0")}`;
+};
 
 const getStatistics = async () => {
     try {
@@ -407,5 +421,6 @@ module.exports = {
     getStopName,
     findActiveScheduleByBus,
     updateScheduleStops,
-    findActiveScheduleByDriver
+    findActiveScheduleByDriver,
+    getNextScheduleCode
 };
